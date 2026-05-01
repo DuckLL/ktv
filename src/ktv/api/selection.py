@@ -1,5 +1,4 @@
-from fastapi import APIRouter
-from fastapi.responses import JSONResponse
+from fastapi import APIRouter, Response
 from pydantic import BaseModel
 from ktv.core.db import get_selection, set_selection
 
@@ -17,7 +16,7 @@ class SelectionBody(BaseModel):
 async def get_selection_api(video_id: str):
     row = await get_selection(video_id)
     if not row:
-        return JSONResponse(None, status_code=204)
+        return Response(status_code=204)
     return row
 
 

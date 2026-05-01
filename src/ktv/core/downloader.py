@@ -2,7 +2,6 @@ import asyncio
 import json
 import re
 from pathlib import Path
-from typing import AsyncIterator
 
 import yt_dlp
 
@@ -24,7 +23,6 @@ def _extract_video_id(url: str) -> str:
 def _parse_artist_title(info: dict) -> tuple[str, str]:
     artist = info.get("artist") or info.get("uploader") or ""
     title = info.get("track") or info.get("title") or ""
-    # Try to split "Artist - Title" from title if no separate artist
     if not info.get("artist") and " - " in title:
         parts = title.split(" - ", 1)
         artist, title = parts[0].strip(), parts[1].strip()
@@ -33,19 +31,17 @@ def _parse_artist_title(info: dict) -> tuple[str, str]:
 
 async def download_video(url: str, progress_cb=None) -> tuple[str, dict]:
     """
-    Download video+audio into cache dir.
+    Download VP9/WebM video + Opus/WebM audio directly from YouTube (no transcoding).
     Returns (video_id, metadata_dict).
-    progress_cb: async callable(pct: int, msg: str)
     """
     video_id = _extract_video_id(url)
     job_dir = CACHE_DIR / video_id
     job_dir.mkdir(exist_ok=True)
 
-    video_path = job_dir / "video_only.mp4"
-    audio_path = job_dir / "audio.mp3"
+    video_path = job_dir / "video_only.webm"
+    audio_path = job_dir / "audio.webm"
     meta_path = job_dir / "meta.json"
 
-    # Return cached metadata if already downloaded
     if meta_path.exists() and video_path.exists() and audio_path.exists():
         with open(meta_path) as f:
             return video_id, json.load(f)
@@ -64,15 +60,19 @@ async def download_video(url: str, progress_cb=None) -> tuple[str, dict]:
             raise ValueError(f"影片長度 {mins} 分鐘，超過 10 分鐘上限")
         return info
 
-    info_pre = await loop.run_in_executor(None, _check_duration)
+    await loop.run_in_executor(None, _check_duration)
 
     if progress_cb:
         await progress_cb(10, "Downloading video & audio…")
 
     def _run_ytdlp():
-        # Download video-only stream, cap at 720p to save space
+        # VP9/WebM video, no transcoding
         ydl_video_opts = {
-            "format": "bestvideo[height<=720][ext=mp4]/bestvideo[height<=720]/bestvideo[ext=mp4]/bestvideo",
+            "format": (
+                "bestvideo[vcodec^=vp9][ext=webm][height<=720]"
+                "/bestvideo[ext=webm][height<=720]"
+                "/bestvideo[height<=720]"
+            ),
             "outtmpl": str(video_path),
             "quiet": True,
             "no_warnings": True,
@@ -80,27 +80,15 @@ async def download_video(url: str, progress_cb=None) -> tuple[str, dict]:
         with yt_dlp.YoutubeDL(ydl_video_opts) as ydl:
             info = ydl.extract_info(url, download=True)
 
-        # Download audio and convert to mp3
+        # Opus/WebM audio — zero transcoding
         ydl_audio_opts = {
-            "format": "bestaudio",
-            "outtmpl": str(job_dir / "audio_raw.%(ext)s"),
+            "format": "bestaudio[ext=webm]/bestaudio[acodec=opus]",
+            "outtmpl": str(audio_path),
             "quiet": True,
             "no_warnings": True,
-            "postprocessors": [{
-                "key": "FFmpegExtractAudio",
-                "preferredcodec": "mp3",
-                "preferredquality": "192",
-            }],
         }
         with yt_dlp.YoutubeDL(ydl_audio_opts) as ydl:
             ydl.extract_info(url, download=True)
-
-        candidates = list(job_dir.glob("audio_raw*.mp3"))
-        if not candidates:
-            candidates = [p for p in job_dir.glob("*.mp3") if p.name != "audio.mp3"]
-        if not candidates:
-            raise RuntimeError("audio conversion to mp3 failed — is ffmpeg installed?")
-        candidates[0].rename(audio_path)
 
         artist, title = _parse_artist_title(info)
         meta = {

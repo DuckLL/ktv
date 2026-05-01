@@ -124,8 +124,18 @@ function setVolume(v) {
 }
 
 function syncActive() {
-  const drift = Math.abs(activeAudio.currentTime - video.currentTime);
-  if (drift > 0.3) activeAudio.currentTime = video.currentTime;
+  const drift = activeAudio.currentTime - video.currentTime;
+  const abs = Math.abs(drift);
+  if (abs > 0.3) {
+    // Large drift: hard resync
+    activeAudio.currentTime = video.currentTime;
+    activeAudio.playbackRate = 1.0;
+  } else if (abs > 0.05) {
+    // Small drift: nudge playback rate to gently converge (~1% change, inaudible)
+    activeAudio.playbackRate = drift > 0 ? 0.99 : 1.01;
+  } else {
+    activeAudio.playbackRate = 1.0;
+  }
 }
 
 video.addEventListener('play',       () => activeAudio.play());
