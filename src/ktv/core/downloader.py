@@ -42,7 +42,7 @@ async def download_video(url: str, progress_cb=None) -> tuple[str, dict]:
     job_dir.mkdir(exist_ok=True)
 
     video_path = job_dir / "video_only.mp4"
-    audio_path = job_dir / "audio.wav"
+    audio_path = job_dir / "audio.mp3"
     meta_path = job_dir / "meta.json"
 
     # Return cached metadata if already downloaded
@@ -55,10 +55,24 @@ async def download_video(url: str, progress_cb=None) -> tuple[str, dict]:
 
     loop = asyncio.get_event_loop()
 
+    def _check_duration():
+        with yt_dlp.YoutubeDL({"quiet": True, "no_warnings": True}) as ydl:
+            info = ydl.extract_info(url, download=False)
+        duration = info.get("duration") or 0
+        if duration > 600:
+            mins = duration // 60
+            raise ValueError(f"影片長度 {mins} 分鐘，超過 10 分鐘上限")
+        return info
+
+    info_pre = await loop.run_in_executor(None, _check_duration)
+
+    if progress_cb:
+        await progress_cb(10, "Downloading video & audio…")
+
     def _run_ytdlp():
-        # Download video-only stream
+        # Download video-only stream, cap at 720p to save space
         ydl_video_opts = {
-            "format": "bestvideo[ext=mp4]/bestvideo",
+            "format": "bestvideo[height<=720][ext=mp4]/bestvideo[height<=720]/bestvideo[ext=mp4]/bestvideo",
             "outtmpl": str(video_path),
             "quiet": True,
             "no_warnings": True,
@@ -66,7 +80,7 @@ async def download_video(url: str, progress_cb=None) -> tuple[str, dict]:
         with yt_dlp.YoutubeDL(ydl_video_opts) as ydl:
             info = ydl.extract_info(url, download=True)
 
-        # Download audio and convert to wav
+        # Download audio and convert to mp3
         ydl_audio_opts = {
             "format": "bestaudio",
             "outtmpl": str(job_dir / "audio_raw.%(ext)s"),
@@ -74,20 +88,19 @@ async def download_video(url: str, progress_cb=None) -> tuple[str, dict]:
             "no_warnings": True,
             "postprocessors": [{
                 "key": "FFmpegExtractAudio",
-                "preferredcodec": "wav",
+                "preferredcodec": "mp3",
+                "preferredquality": "192",
             }],
         }
         with yt_dlp.YoutubeDL(ydl_audio_opts) as ydl:
             ydl.extract_info(url, download=True)
 
-        # Find the wav produced by FFmpegExtractAudio (stem stays "audio_raw")
-        wav_candidates = list(job_dir.glob("audio_raw*.wav"))
-        if not wav_candidates:
-            # Fall back: any new .wav in the directory
-            wav_candidates = [p for p in job_dir.glob("*.wav") if p.name != "audio.wav"]
-        if not wav_candidates:
-            raise RuntimeError("audio conversion to wav failed — is ffmpeg installed?")
-        wav_candidates[0].rename(audio_path)
+        candidates = list(job_dir.glob("audio_raw*.mp3"))
+        if not candidates:
+            candidates = [p for p in job_dir.glob("*.mp3") if p.name != "audio.mp3"]
+        if not candidates:
+            raise RuntimeError("audio conversion to mp3 failed — is ffmpeg installed?")
+        candidates[0].rename(audio_path)
 
         artist, title = _parse_artist_title(info)
         meta = {
@@ -100,9 +113,6 @@ async def download_video(url: str, progress_cb=None) -> tuple[str, dict]:
         with open(meta_path, "w") as f:
             json.dump(meta, f)
         return meta
-
-    if progress_cb:
-        await progress_cb(10, "Downloading video & audio…")
 
     meta = await loop.run_in_executor(None, _run_ytdlp)
 

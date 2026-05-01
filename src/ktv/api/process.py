@@ -28,7 +28,7 @@ async def process(req: ProcessRequest):
     except ValueError as e:
         return JSONResponse({"error": str(e)}, status_code=400)
 
-    no_vocals_path = CACHE_DIR / video_id / "no_vocals.wav"
+    no_vocals_path = CACHE_DIR / video_id / "no_vocals.mp3"
 
     if no_vocals_path.exists():
         rows = await get_all_videos()
@@ -79,7 +79,7 @@ async def process(req: ProcessRequest):
 
 @router.get("/status/{video_id}")
 async def status(video_id: str):
-    no_vocals_path = CACHE_DIR / video_id / "no_vocals.wav"
+    no_vocals_path = CACHE_DIR / video_id / "no_vocals.mp3"
     if no_vocals_path.exists():
         rows = await get_all_videos()
         meta = next((r for r in rows if r["video_id"] == video_id), None)
