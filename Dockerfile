@@ -1,30 +1,41 @@
-FROM python:3.12-slim
+# uv is pre-installed in this image
+FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim
 
-# System dependencies: ffmpeg for muxing, git for demucs model download
+# System dependencies
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends ffmpeg git && \
+    apt-get install -y --no-install-recommends ffmpeg && \
     rm -rf /var/lib/apt/lists/*
+
+# Non-root user
+RUN groupadd --system --gid 999 app && \
+    useradd --system --uid 999 --gid 999 --create-home app
 
 WORKDIR /app
 
-# Install uv
-RUN pip install --no-cache-dir uv
+ENV UV_COMPILE_BYTECODE=1
+ENV UV_LINK_MODE=copy
+ENV UV_NO_DEV=1
+ENV PATH="/app/.venv/bin:$PATH"
 
-# Copy project metadata first for layer caching
-COPY pyproject.toml .python-version ./
+# Install dependencies first (no project source) for layer caching
+RUN --mount=type=cache,target=/root/.cache/uv \
+    --mount=type=bind,source=uv.lock,target=uv.lock \
+    --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
+    uv sync --locked --no-install-project
 
-# Install Python dependencies (no dev deps)
-RUN uv sync --no-dev
+# Copy source and install project
+COPY . /app
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --locked
 
-# Copy application source
-COPY src/ src/
+# Give app user ownership of the working directory
+RUN mkdir -p /app/cache && chown -R app:app /app
 
-# Pre-download demucs htdemucs model weights (~80 MB) at build time
-# so first-run doesn't need internet access
-RUN uv run python -c "import demucs.pretrained; demucs.pretrained.get_model('htdemucs')" || true
+ENTRYPOINT []
 
-RUN mkdir -p cache
+# Pre-download demucs htdemucs model as app user so it lands in /home/app/.cache
+USER app
+RUN python -c "import demucs.pretrained; demucs.pretrained.get_model('htdemucs')" || true
 
 EXPOSE 8000
-
-CMD ["uv", "run", "uvicorn", "ktv.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "ktv.main:app", "--host", "0.0.0.0", "--port", "8000"]
