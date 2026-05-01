@@ -1,5 +1,6 @@
 .claude/
 cache/
+data/
 ktv.db
 __pycache__/
 *.pyc

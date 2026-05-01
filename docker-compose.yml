@@ -5,7 +5,7 @@ services:
       - "8000:8000"
     volumes:
       - ./cache:/app/cache
-      - ./ktv.db:/app/ktv.db
+      - ./data:/app/data
       # Persist demucs model weights across rebuilds (/home/app/.cache/torch)
       - demucs-models:/home/app/.cache/torch
     restart: unless-stopped

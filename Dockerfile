@@ -30,9 +30,8 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --locked
 
 # Create writable runtime paths without rewriting the dependency layer.
-RUN mkdir -p /app/cache && \
-    touch /app/ktv.db && \
-    chown app:app /app /app/cache /app/ktv.db
+RUN mkdir -p /app/cache /app/data && \
+    chown app:app /app /app/cache /app/data
 
 ENTRYPOINT []
 

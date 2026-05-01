@@ -1,7 +1,7 @@
 import aiosqlite
-from ktv.config import BASE_DIR
+from ktv.config import DATA_DIR
 
-DB_PATH = BASE_DIR / "ktv.db"
+DB_PATH = DATA_DIR / "ktv.db"
 
 DDL = """
 CREATE TABLE IF NOT EXISTS videos (
