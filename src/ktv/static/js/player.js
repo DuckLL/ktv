@@ -129,9 +129,19 @@ function syncActive() {
 }
 
 video.addEventListener('play',       () => activeAudio.play());
-video.addEventListener('pause',      () => activeAudio.pause());
+video.addEventListener('pause',      () => { if (!document.hidden) activeAudio.pause(); });
 video.addEventListener('seeked',     () => { activeAudio.currentTime = video.currentTime; });
 video.addEventListener('timeupdate', syncActive);
+
+// When the tab comes back into focus, the browser may have paused the muted video
+// while audio continued playing — resync video position from audio and resume.
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) return;
+  if (!activeAudio.paused && video.paused) {
+    video.currentTime = activeAudio.currentTime;
+    video.play().catch(() => {});
+  }
+});
 
 // ── Audio toggle ──────────────────────────────────────
 const btnInstrumental = document.getElementById('btnInstrumental');
