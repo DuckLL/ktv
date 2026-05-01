@@ -50,11 +50,29 @@ async def upsert_video(meta: dict, processed_at: int):
         await db.commit()
 
 
+async def upsert_pending_video(video_id: str, meta: dict | None = None):
+    meta = meta or {}
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            "INSERT OR REPLACE INTO videos "
+            "(video_id, title, artist, duration, thumbnail, processed_at) "
+            "VALUES (?,?,?,?,?,0)",
+            (
+                video_id,
+                meta.get("title") or video_id,
+                meta.get("artist") or "處理中",
+                meta.get("duration"),
+                meta.get("thumbnail"),
+            ),
+        )
+        await db.commit()
+
+
 async def get_all_videos() -> list[dict]:
     async with aiosqlite.connect(DB_PATH) as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
-            "SELECT * FROM videos ORDER BY processed_at DESC"
+            "SELECT * FROM videos ORDER BY (processed_at = 0) DESC, processed_at DESC"
         ) as cur:
             rows = await cur.fetchall()
     return [dict(r) for r in rows]

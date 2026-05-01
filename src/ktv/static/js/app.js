@@ -1,3 +1,5 @@
+import { getLibraryCardState, isPendingVideo } from './library_state.js';
+
 const form = document.getElementById('urlForm');
 const urlInput = document.getElementById('urlInput');
 const submitBtn = document.getElementById('submitBtn');
@@ -13,12 +15,13 @@ const STAGE_LABELS = {
   downloading: '下載影片中…',
   separating: '分離人聲中（CPU 模式，請耐心等候）…',
   muxing: '合成影片中…',
-  done: '完成！正在跳轉…',
+  done: '完成，可以播放',
   error: '發生錯誤',
 };
 
 // ── Library ───────────────────────────────────────────
 let allLibrary = [];
+let libraryPollTimer = null;
 
 async function loadLibrary() {
   try {
@@ -28,6 +31,7 @@ async function loadLibrary() {
       libraryWrap.style.display = 'block';
       renderLibrary(allLibrary);
     }
+    syncLibraryPolling(allLibrary.some(isPendingVideo));
   } catch (_) {}
 }
 
@@ -38,18 +42,59 @@ function renderLibrary(items) {
     return;
   }
   items.forEach((item) => {
+    const state = getLibraryCardState(item);
     const card = document.createElement('div');
-    card.className = 'library-card';
+    card.className = `library-card${state.pending ? ' is-pending' : ''}`;
     card.innerHTML = `
       <div class="library-card-title">${escHtml(item.title || item.video_id)}</div>
-      <div class="library-card-artist">${escHtml(item.artist || '未知歌手')}</div>
+      <div class="library-card-meta">
+        <div class="library-card-artist">${escHtml(item.artist || '未知歌手')}</div>
+        ${state.statusLabel ? `<div class="library-card-status">${escHtml(state.statusLabel)}</div>` : ''}
+      </div>
     `;
-    card.addEventListener('click', () => {
-      const p = new URLSearchParams({ id: item.video_id, title: item.title || '', artist: item.artist || '' });
-      window.location.href = `/player?${p}`;
-    });
+    card.addEventListener('click', () => handleLibraryCardClick(item));
     libraryGrid.appendChild(card);
   });
+}
+
+async function handleLibraryCardClick(item) {
+  const state = getLibraryCardState(item);
+  if (!state.pending) {
+    goToPlayer(item);
+    return;
+  }
+
+  progressWrap.style.display = 'block';
+  setProgress(0, '這首還在背景處理中，可以先播放其他歌。');
+
+  try {
+    const resp = await fetch(`/api/status/${encodeURIComponent(item.video_id)}`);
+    if (!resp.ok) return;
+
+    const status = await resp.json();
+    if (status.status === 'done') {
+      await loadLibrary();
+      goToPlayer(status);
+      return;
+    }
+    setProgress(status.pct ?? 0, status.msg || '這首還在背景處理中，可以先播放其他歌。');
+  } catch (_) {}
+}
+
+function goToPlayer(item) {
+  const p = new URLSearchParams({ id: item.video_id, title: item.title || '', artist: item.artist || '' });
+  window.location.href = `/player?${p}`;
+}
+
+function syncLibraryPolling(shouldPoll) {
+  if (shouldPoll && !libraryPollTimer) {
+    libraryPollTimer = setInterval(loadLibrary, 5000);
+    return;
+  }
+  if (!shouldPoll && libraryPollTimer) {
+    clearInterval(libraryPollTimer);
+    libraryPollTimer = null;
+  }
 }
 
 librarySearch.addEventListener('input', () => {
@@ -71,7 +116,7 @@ form.addEventListener('submit', async (e) => {
 
   submitBtn.disabled = true;
   progressWrap.style.display = 'block';
-  setProgress(0, '開始處理…');
+  setProgress(5, '送入背景處理…');
 
   try {
     const resp = await fetch('/api/process', {
@@ -85,23 +130,11 @@ form.addEventListener('submit', async (e) => {
       throw new Error(err.error || 'API error');
     }
 
-    const reader = resp.body.getReader();
-    const decoder = new TextDecoder();
-    let buf = '';
-
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      buf += decoder.decode(value, { stream: true });
-      const lines = buf.split('\n');
-      buf = lines.pop();
-      for (const line of lines) {
-        if (!line.startsWith('data:')) continue;
-        const json = line.slice(5).trim();
-        if (!json) continue;
-        try { handleEvent(JSON.parse(json)); } catch (_) {}
-      }
-    }
+    const evt = await resp.json();
+    handleEvent(evt);
+    urlInput.value = '';
+    submitBtn.disabled = false;
+    await loadLibrary();
   } catch (err) {
     setProgress(0, `錯誤：${err.message}`);
     submitBtn.disabled = false;
@@ -111,8 +144,14 @@ form.addEventListener('submit', async (e) => {
 function handleEvent(evt) {
   if (evt.stage === 'done') {
     setProgress(100, STAGE_LABELS.done);
-    const p = new URLSearchParams({ id: evt.video_id, title: evt.title || '', artist: evt.artist || '' });
-    setTimeout(() => { window.location.href = `/player?${p}`; }, 600);
+    return;
+  }
+  if (evt.status === 'done') {
+    setProgress(100, '這首已經處理完成，可以播放。');
+    return;
+  }
+  if (evt.status === 'queued' || evt.status === 'processing') {
+    setProgress(evt.pct ?? 10, '已送入背景處理，可以先點其他歌。');
     return;
   }
   if (evt.stage === 'error') {
