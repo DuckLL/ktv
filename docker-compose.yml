@@ -4,11 +4,13 @@ services:
     ports:
       - "8000:8000"
     volumes:
-      - ./cache:/app/cache
-      - ./data:/app/data
+      - ktv-cache:/app/cache
+      - ktv-data:/app/data
       # Persist demucs model weights across rebuilds (/home/app/.cache/torch)
       - demucs-models:/home/app/.cache/torch
     restart: unless-stopped
 
 volumes:
+  ktv-cache:
+  ktv-data:
   demucs-models:

@@ -35,8 +35,9 @@ docker compose up --build
 
 > 第一次 build 會下載 demucs htdemucs 模型（約 80 MB）。  
 > 模型透過 Docker volume 快取，後續 rebuild 不需重新下載。
-> Docker Compose 會將 `./cache` 掛到容器的 `/app/cache`，並將 `./data` 掛到 `/app/data`。
-> 若你有舊版根目錄的 `ktv.db`，請先移到 `data/ktv.db` 再啟動。
+> Docker Compose 會使用 named volumes 保存 `/app/cache` 與 `/app/data`，
+> 避免 host bind mount 的空目錄權限造成 SQLite 無法建立 `ktv.db`。
+> 若你有舊版根目錄的 `ktv.db`，可匯入到 `ktv-data` volume 的 `/app/data/ktv.db`。
 
 ## 使用說明
 
