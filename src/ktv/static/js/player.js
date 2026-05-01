@@ -1,4 +1,5 @@
 import { parseLrc, findActiveIndex } from '/static/js/lrc.js';
+import { calculateMixVolumes, getMixButtonState, normalizeMixAmount } from '/static/js/audio_mix.js';
 
 const params = new URLSearchParams(location.search);
 const videoId = params.get('id') || '';
@@ -9,7 +10,7 @@ document.getElementById('playerTitle').textContent = title || 'Unknown Title';
 document.getElementById('playerArtist').textContent = artist || '';
 
 const video = document.getElementById('mainVideo');
-video.muted = true; // audio_only.mp4 has no audio track; audio handled separately
+video.muted = true; // The video has no audio track; audio is handled separately.
 if (videoId) video.src = `/api/video/${videoId}`;
 
 // ── Lyrics state ──────────────────────────────────────
@@ -107,70 +108,114 @@ document.getElementById('offsetPlus').addEventListener('click',  () => setOffset
 document.getElementById('offsetReset').addEventListener('click', () => setOffset(0));
 
 // ── Audio setup ───────────────────────────────────────
-// video_only.mp4 has no audio — always muted, audio handled by <audio> elements
+// The video has no audio track; both audio elements are mixed separately.
 const instrAudio = new Audio(`/api/audio/${videoId}/instrumental`);
-const origAudio  = new Audio(`/api/audio/${videoId}/original`);
+const vocalAudio = new Audio(`/api/audio/${videoId}/vocals`);
 instrAudio.preload = 'auto';
-origAudio.preload  = 'none';
+vocalAudio.preload = 'auto';
 
-let activeAudio = instrAudio;
+const audioTracks = [instrAudio, vocalAudio];
 let masterVolume = 0.8;
-instrAudio.volume = masterVolume;
-origAudio.volume  = masterVolume;
+let mixAmount = 0;
 
 function setVolume(v) {
   masterVolume = Math.round(Math.max(0, Math.min(1, v)) * 100) / 100;
-  activeAudio.volume = masterVolume;
+  applyMixVolumes();
 }
 
-function syncActive() {
-  const drift = activeAudio.currentTime - video.currentTime;
+function applyMixVolumes() {
+  const volumes = calculateMixVolumes(masterVolume, mixAmount);
+  instrAudio.volume = volumes.instrumental;
+  vocalAudio.volume = volumes.vocal;
+}
+
+function setAudioTime(audio, time) {
+  try {
+    audio.currentTime = time;
+  } catch (_) {}
+}
+
+function playAudio(audio) {
+  const playPromise = audio.play();
+  if (playPromise?.catch) playPromise.catch(() => {});
+}
+
+function playAllAudio() {
+  audioTracks.forEach(playAudio);
+}
+
+function pauseAllAudio() {
+  audioTracks.forEach(audio => audio.pause());
+}
+
+function syncAudio(audio) {
+  const drift = audio.currentTime - video.currentTime;
   const abs = Math.abs(drift);
   if (abs > 0.3) {
     // Large drift: hard resync
-    activeAudio.currentTime = video.currentTime;
-    activeAudio.playbackRate = 1.0;
+    setAudioTime(audio, video.currentTime);
+    audio.playbackRate = 1.0;
   } else if (abs > 0.05) {
     // Small drift: nudge playback rate to gently converge (~1% change, inaudible)
-    activeAudio.playbackRate = drift > 0 ? 0.99 : 1.01;
+    audio.playbackRate = drift > 0 ? 0.99 : 1.01;
   } else {
-    activeAudio.playbackRate = 1.0;
+    audio.playbackRate = 1.0;
   }
 }
 
-video.addEventListener('play',       () => activeAudio.play());
-video.addEventListener('pause',      () => { if (!document.hidden) activeAudio.pause(); });
-video.addEventListener('seeked',     () => { activeAudio.currentTime = video.currentTime; });
-video.addEventListener('timeupdate', syncActive);
+function syncAllAudio() {
+  audioTracks.forEach(syncAudio);
+}
+
+video.addEventListener('play', () => {
+  audioTracks.forEach(audio => setAudioTime(audio, video.currentTime));
+  playAllAudio();
+});
+video.addEventListener('pause', () => { if (!document.hidden) pauseAllAudio(); });
+video.addEventListener('seeked', () => {
+  audioTracks.forEach(audio => setAudioTime(audio, video.currentTime));
+});
+video.addEventListener('timeupdate', syncAllAudio);
 
 // When the tab comes back into focus, the browser may have paused the muted video
 // while audio continued playing — resync video position from audio and resume.
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) return;
-  if (!activeAudio.paused && video.paused) {
-    video.currentTime = activeAudio.currentTime;
+  const referenceAudio = audioTracks.find(audio => !audio.paused);
+  if (referenceAudio && video.paused) {
+    video.currentTime = referenceAudio.currentTime;
     video.play().catch(() => {});
+  } else if (!video.paused) {
+    audioTracks.forEach(audio => setAudioTime(audio, video.currentTime));
+    playAllAudio();
   }
 });
 
-// ── Audio toggle ──────────────────────────────────────
+// ── Audio mix controls ────────────────────────────────
 const btnInstrumental = document.getElementById('btnInstrumental');
 const btnOriginal     = document.getElementById('btnOriginal');
+const vocalMixSlider  = document.getElementById('vocalMixSlider');
+const vocalMixValue   = document.getElementById('vocalMixValue');
 
-function switchAudio(audio) {
-  if (audio === activeAudio) return;
-  const wasPlaying = !video.paused;
-  activeAudio.pause();
-  activeAudio = audio;
-  activeAudio.volume = masterVolume;
-  activeAudio.currentTime = video.currentTime;
-  if (wasPlaying) activeAudio.play();
-  btnInstrumental.classList.toggle('active', activeAudio === instrAudio);
-  btnOriginal.classList.toggle('active',     activeAudio === origAudio);
+function updateMixButtons() {
+  const state = getMixButtonState(mixAmount);
+  btnInstrumental.classList.toggle('active', state.instrumental);
+  btnOriginal.classList.toggle('active', state.vocal);
 }
 
-btnInstrumental.addEventListener('click', () => switchAudio(instrAudio));
-btnOriginal.addEventListener('click',     () => switchAudio(origAudio));
+function setMix(value) {
+  mixAmount = normalizeMixAmount(value);
+  vocalMixSlider.value = String(Math.round(mixAmount * 100));
+  vocalMixValue.textContent = `${Math.round(mixAmount * 100)}%`;
+  applyMixVolumes();
+  updateMixButtons();
+  if (!video.paused) playAllAudio();
+}
+
+btnInstrumental.addEventListener('click', () => setMix(0));
+btnOriginal.addEventListener('click',     () => setMix(1));
+vocalMixSlider.addEventListener('input', () => setMix(Number(vocalMixSlider.value) / 100));
+setMix(0);
 
 // ── Keyboard controls ─────────────────────────────────
 document.addEventListener('keydown', (e) => {

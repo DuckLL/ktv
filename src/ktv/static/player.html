@@ -25,9 +25,22 @@
 
       <div class="video-controls">
         <span class="kbd-hint">← → 快退/進 5s　↑ ↓ 音量</span>
-        <div class="audio-toggle">
+        <div class="audio-toggle" aria-label="音軌混音">
           <button class="audio-toggle-btn active" id="btnInstrumental">🎵 伴唱</button>
-          <button class="audio-toggle-btn" id="btnOriginal">🎤 原唱</button>
+          <label class="mix-control" for="vocalMixSlider">
+            <input
+              class="mix-slider"
+              id="vocalMixSlider"
+              type="range"
+              min="0"
+              max="100"
+              step="1"
+              value="0"
+              aria-label="人聲混音比例"
+            >
+            <span class="mix-value" id="vocalMixValue">0%</span>
+          </label>
+          <button class="audio-toggle-btn" id="btnOriginal">🎤 人聲</button>
         </div>
       </div>
       <div class="lyrics-stage" id="lyricsStage">

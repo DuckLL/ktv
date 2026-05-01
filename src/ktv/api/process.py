@@ -8,7 +8,7 @@ from sse_starlette.sse import EventSourceResponse
 
 from ktv.config import CACHE_DIR
 from ktv.core.downloader import download_video, _extract_video_id
-from ktv.core.separator import separate_vocals
+from ktv.core.separator import separate_vocals, separated_audio_ready
 from ktv.core.db import upsert_video, get_all_videos
 
 router = APIRouter()
@@ -28,9 +28,7 @@ async def process(req: ProcessRequest):
     except ValueError as e:
         return JSONResponse({"error": str(e)}, status_code=400)
 
-    no_vocals_path = CACHE_DIR / video_id / "no_vocals.webm"
-
-    if no_vocals_path.exists():
+    if separated_audio_ready(video_id):
         rows = await get_all_videos()
         meta = next((r for r in rows if r["video_id"] == video_id), None)
         if meta is None:
@@ -79,8 +77,7 @@ async def process(req: ProcessRequest):
 
 @router.get("/status/{video_id}")
 async def status(video_id: str):
-    no_vocals_path = CACHE_DIR / video_id / "no_vocals.webm"
-    if no_vocals_path.exists():
+    if separated_audio_ready(video_id):
         rows = await get_all_videos()
         meta = next((r for r in rows if r["video_id"] == video_id), None)
         if meta:

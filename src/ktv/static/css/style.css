@@ -427,6 +427,7 @@ video {
 .video-controls {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 0.5rem;
   padding: 0.4rem 0.75rem;
   background: #000;
@@ -435,11 +436,13 @@ video {
 
 .audio-toggle {
   display: flex;
+  align-items: stretch;
   background: rgba(255,255,255,0.07);
   border-radius: 8px;
   overflow: hidden;
   border: 1px solid var(--border);
   margin-left: auto;
+  min-width: 0;
 }
 
 .audio-toggle-btn {
@@ -459,7 +462,35 @@ video {
   font-weight: 600;
 }
 
+.mix-control {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.25rem 0.65rem;
+  border-left: 1px solid var(--border);
+  border-right: 1px solid var(--border);
+  background: rgba(255,255,255,0.03);
+  min-width: 0;
+}
+
+.mix-slider {
+  width: 8.5rem;
+  min-width: 5rem;
+  max-width: 22vw;
+  accent-color: var(--neon);
+  cursor: pointer;
+}
+
+.mix-value {
+  color: var(--accent);
+  font-size: 0.72rem;
+  font-variant-numeric: tabular-nums;
+  min-width: 2.25rem;
+  text-align: right;
+}
+
 .kbd-hint {
+  flex: 1 1 10rem;
   font-size: 0.7rem;
   color: var(--muted);
   opacity: 0.6;
