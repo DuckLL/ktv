@@ -43,6 +43,14 @@ function renderLyrics() {
   });
 }
 
+function centerLyricInStage(activeEl) {
+  const stageRect = lyricsStage.getBoundingClientRect();
+  const lineRect = activeEl.getBoundingClientRect();
+  const lineCenter = lineRect.top - stageRect.top + lyricsStage.scrollTop + lineRect.height / 2;
+  const top = Math.max(0, lineCenter - lyricsStage.clientHeight / 2);
+  lyricsStage.scrollTo({ top, behavior: 'smooth' });
+}
+
 function syncLyrics(currentTime) {
   const adjusted = currentTime + offsetSeconds;
   const newIdx = findActiveIndex(lrcLines, adjusted);
@@ -57,7 +65,7 @@ function syncLyrics(currentTime) {
 
   if (activeIdx >= 0) {
     const activeEl = lyricsStage.querySelector('.lyric-line.active');
-    if (activeEl) activeEl.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    if (activeEl) centerLyricInStage(activeEl);
   }
 }
 

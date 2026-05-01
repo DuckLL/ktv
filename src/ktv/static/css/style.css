@@ -204,6 +204,8 @@ body {
   grid-template-columns: 1fr 340px;
   grid-template-rows: auto 1fr;
   height: 100vh;
+  width: 100%;
+  max-width: 100%;
   gap: 0;
 }
 
@@ -212,12 +214,14 @@ body {
   display: flex;
   align-items: center;
   gap: 1rem;
+  min-width: 0;
   padding: 0.75rem 1.25rem;
   background: var(--surface);
   border-bottom: 1px solid var(--border);
 }
 
 .player-logo {
+  flex: 0 0 auto;
   font-size: 1.4rem;
   font-weight: 900;
   background: linear-gradient(135deg, var(--neon), var(--accent));
@@ -228,6 +232,8 @@ body {
 }
 
 .player-title {
+  flex: 1 1 auto;
+  min-width: 0;
   font-size: 1rem;
   color: var(--text);
   overflow: hidden;
@@ -236,9 +242,14 @@ body {
 }
 
 .player-artist {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 32vw;
   font-size: 0.85rem;
   color: var(--muted);
   margin-left: auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
@@ -246,6 +257,7 @@ body {
 .player-main {
   display: flex;
   flex-direction: column;
+  min-width: 0;
   overflow: hidden;
   background: #000;
 }
@@ -314,6 +326,7 @@ video {
   border-left: 1px solid var(--border);
   display: flex;
   flex-direction: column;
+  min-width: 0;
   overflow: hidden;
 }
 
@@ -335,6 +348,7 @@ video {
 
 .sidebar-input {
   flex: 1;
+  min-width: 0;
   padding: 0.5rem 0.75rem;
   background: var(--bg);
   border: 1px solid var(--border);
@@ -429,6 +443,7 @@ video {
   align-items: center;
   flex-wrap: wrap;
   gap: 0.5rem;
+  min-width: 0;
   padding: 0.4rem 0.75rem;
   background: #000;
   flex-shrink: 0;
@@ -437,6 +452,7 @@ video {
 .audio-toggle {
   display: flex;
   align-items: stretch;
+  max-width: 100%;
   background: rgba(255,255,255,0.07);
   border-radius: 8px;
   overflow: hidden;
@@ -446,6 +462,7 @@ video {
 }
 
 .audio-toggle-btn {
+  flex: 0 0 auto;
   padding: 0.3rem 0.85rem;
   font-size: 0.78rem;
   border: none;
@@ -587,3 +604,147 @@ video {
 ::-webkit-scrollbar { width: 5px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+@media (max-width: 760px) {
+  .player-layout {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto auto auto;
+    height: auto;
+    min-height: 100vh;
+  }
+
+  .player-header {
+    gap: 0.55rem;
+    padding: 0.65rem 0.75rem;
+  }
+
+  .player-logo {
+    font-size: 1.1rem;
+    flex: 0 0 auto;
+  }
+
+  .player-title {
+    min-width: 0;
+    font-size: 0.9rem;
+  }
+
+  .player-artist {
+    display: none;
+  }
+
+  .player-main {
+    overflow: visible;
+  }
+
+  video {
+    max-height: 38vh;
+  }
+
+  .video-controls {
+    align-items: stretch;
+    gap: 0.45rem;
+    padding: 0.5rem;
+  }
+
+  .kbd-hint {
+    flex-basis: 100%;
+    order: 3;
+    text-align: center;
+  }
+
+  .volume-control,
+  .audio-toggle {
+    width: 100%;
+    margin-left: 0;
+  }
+
+  .volume-control {
+    justify-content: space-between;
+  }
+
+  .volume-slider,
+  .mix-slider {
+    flex: 1 1 auto;
+    width: auto;
+    max-width: none;
+  }
+
+  .mix-slider,
+  .volume-slider {
+    min-width: 0;
+  }
+
+  .audio-toggle {
+    order: 2;
+  }
+
+  .audio-toggle-btn {
+    padding: 0.45rem 0.5rem;
+  }
+
+  .mix-control {
+    flex: 1 1 auto;
+    gap: 0.35rem;
+    padding: 0.25rem 0.45rem;
+  }
+
+  .lyrics-stage {
+    flex: none;
+    min-height: 8rem;
+    max-height: 10rem;
+    padding: 1rem 1.1rem;
+  }
+
+  .lyric-line {
+    font-size: 1rem;
+  }
+
+  .lyric-line.active {
+    font-size: 1.18rem;
+  }
+
+  .offset-bar {
+    flex-wrap: wrap;
+    align-items: stretch;
+    padding: 0.55rem 0.75rem;
+  }
+
+  .offset-label {
+    flex-basis: 100%;
+  }
+
+  .offset-value {
+    flex: 1 1 auto;
+    min-width: 3.75rem;
+    align-self: center;
+  }
+
+  .offset-btn {
+    flex: 1 1 auto;
+    padding: 0.35rem 0.5rem;
+  }
+
+  .offset-btn.reset {
+    margin-left: 0;
+  }
+
+  .sidebar {
+    border-left: none;
+    border-top: 1px solid var(--border);
+    min-height: 18rem;
+    overflow: visible;
+  }
+
+  .sidebar-header {
+    padding: 0.8rem 0.9rem;
+  }
+
+  .sidebar-search {
+    padding: 0.7rem 0.75rem;
+  }
+
+  .results-list {
+    flex: none;
+    max-height: 18rem;
+  }
+}
