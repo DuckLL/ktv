@@ -489,6 +489,40 @@ video {
   text-align: right;
 }
 
+.volume-control {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.25rem 0.55rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: rgba(255,255,255,0.06);
+  color: var(--muted);
+  font-size: 0.72rem;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  min-width: 0;
+}
+
+.volume-label {
+  color: var(--muted);
+}
+
+.volume-slider {
+  width: 6rem;
+  min-width: 4.5rem;
+  max-width: 18vw;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.volume-value {
+  color: var(--accent);
+  font-weight: 700;
+  min-width: 2.4rem;
+  text-align: right;
+}
+
 .kbd-hint {
   flex: 1 1 10rem;
   font-size: 0.7rem;

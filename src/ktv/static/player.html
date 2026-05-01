@@ -25,6 +25,20 @@
 
       <div class="video-controls">
         <span class="kbd-hint">← → 快退/進 5s　↑ ↓ 音量</span>
+        <label class="volume-control" for="volumeSlider">
+          <span class="volume-label">音量</span>
+          <input
+            class="volume-slider"
+            id="volumeSlider"
+            type="range"
+            min="0"
+            max="100"
+            step="1"
+            value="80"
+            aria-label="主音量"
+          >
+          <span class="volume-value" id="volumeValue" aria-live="polite">80%</span>
+        </label>
         <div class="audio-toggle" aria-label="音軌混音">
           <button class="audio-toggle-btn active" id="btnInstrumental">🎵 伴唱</button>
           <label class="mix-control" for="vocalMixSlider">

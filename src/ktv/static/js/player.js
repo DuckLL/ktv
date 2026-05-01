@@ -1,5 +1,11 @@
 import { parseLrc, findActiveIndex } from '/static/js/lrc.js';
-import { calculateMixVolumes, getMixButtonState, normalizeMixAmount } from '/static/js/audio_mix.js';
+import {
+  calculateMixVolumes,
+  formatVolumePercent,
+  getMixButtonState,
+  normalizeMixAmount,
+  volumeToSliderValue,
+} from '/static/js/audio_mix.js';
 
 const params = new URLSearchParams(location.search);
 const videoId = params.get('id') || '';
@@ -117,10 +123,18 @@ vocalAudio.preload = 'auto';
 const audioTracks = [instrAudio, vocalAudio];
 let masterVolume = 0.8;
 let mixAmount = 0;
+const volumeSlider = document.getElementById('volumeSlider');
+const volumeValue = document.getElementById('volumeValue');
 
 function setVolume(v) {
   masterVolume = Math.round(Math.max(0, Math.min(1, v)) * 100) / 100;
   applyMixVolumes();
+  updateVolumeDisplay();
+}
+
+function updateVolumeDisplay() {
+  volumeSlider.value = volumeToSliderValue(masterVolume);
+  volumeValue.textContent = formatVolumePercent(masterVolume);
 }
 
 function applyMixVolumes() {
@@ -215,6 +229,8 @@ function setMix(value) {
 btnInstrumental.addEventListener('click', () => setMix(0));
 btnOriginal.addEventListener('click',     () => setMix(1));
 vocalMixSlider.addEventListener('input', () => setMix(Number(vocalMixSlider.value) / 100));
+volumeSlider.addEventListener('input', () => setVolume(Number(volumeSlider.value) / 100));
+updateVolumeDisplay();
 setMix(0);
 
 // ── Keyboard controls ─────────────────────────────────
