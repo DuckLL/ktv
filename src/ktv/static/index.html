@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>KTV — 卡拉 OK</title>
+  <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+  <div class="home">
+    <div class="home-logo">🎤 KTV</div>
+    <div class="home-subtitle">YouTube 卡拉 OK 播放器</div>
+
+    <form class="url-form" id="urlForm">
+      <input
+        class="url-input"
+        id="urlInput"
+        type="url"
+        placeholder="貼上 YouTube 網址…"
+        required
+        autocomplete="off"
+      >
+      <button class="btn" type="submit" id="submitBtn">開始處理</button>
+    </form>
+
+    <div class="progress-wrap" id="progressWrap">
+      <div class="progress-label" id="progressLabel">準備中…</div>
+      <div class="progress-bar-bg">
+        <div class="progress-bar-fill" id="progressFill"></div>
+      </div>
+    </div>
+
+    <!-- Library -->
+    <div class="library-wrap" id="libraryWrap" style="display:none">
+      <div class="library-header">
+        <span class="library-title">已處理的影片</span>
+        <input class="library-search" id="librarySearch" type="text" placeholder="搜尋標題或歌手…" autocomplete="off">
+      </div>
+      <div class="library-grid" id="libraryGrid"></div>
+    </div>
+  </div>
+
+  <script src="/static/js/app.js"></script>
+</body>
+</html>

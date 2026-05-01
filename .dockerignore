@@ -1,0 +1,9 @@
+.claude/
+cache/
+ktv.db
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+.git/
+*.md

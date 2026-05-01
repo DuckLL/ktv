@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>KTV Player</title>
+  <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+  <div class="player-layout">
+
+    <!-- Header -->
+    <header class="player-header">
+      <a class="player-logo" href="/">🎤 KTV</a>
+      <span class="player-title" id="playerTitle"></span>
+      <span class="player-artist" id="playerArtist"></span>
+    </header>
+
+    <!-- Main: video + lyrics -->
+    <main class="player-main">
+      <div class="video-wrap">
+        <video id="mainVideo" controls playsinline></video>
+      </div>
+
+      <div class="video-controls">
+        <span class="kbd-hint">← → 快退/進 5s　↑ ↓ 音量</span>
+        <div class="audio-toggle">
+          <button class="audio-toggle-btn active" id="btnInstrumental">🎵 伴唱</button>
+          <button class="audio-toggle-btn" id="btnOriginal">🎤 原唱</button>
+        </div>
+      </div>
+      <div class="lyrics-stage" id="lyricsStage">
+        <div class="lyrics-placeholder">載入歌詞中…</div>
+      </div>
+
+      <!-- Lyrics time offset controls -->
+      <div class="offset-bar" id="offsetBar">
+        <span class="offset-label">歌詞時間差</span>
+        <button class="offset-btn" id="offsetMinus">−0.5s</button>
+        <span class="offset-value" id="offsetValue">0.00 s</span>
+        <button class="offset-btn" id="offsetPlus">+0.5s</button>
+        <button class="offset-btn reset" id="offsetReset">重置</button>
+        <span class="offset-saved" id="offsetSaved">已儲存</span>
+      </div>
+    </main>
+
+    <!-- Sidebar: lyrics search -->
+    <aside class="sidebar">
+      <div class="sidebar-header">歌詞搜尋</div>
+
+      <div class="sidebar-search">
+        <input
+          class="sidebar-input"
+          id="lyricsSearchInput"
+          type="text"
+          placeholder="歌手 歌名…"
+          autocomplete="off"
+        >
+        <button class="sidebar-btn" id="lyricsSearchBtn">搜尋</button>
+      </div>
+
+      <div class="results-list" id="resultsList">
+        <div class="no-results">自動搜尋中…</div>
+      </div>
+    </aside>
+
+  </div>
+
+  <script type="module" src="/static/js/player.js"></script>
+</body>
+</html>

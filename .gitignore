@@ -1,0 +1,16 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.venv/
+
+# Project data
+cache/
+ktv.db
+
+# Claude
+.claude/
+
+# OS
+.DS_Store
