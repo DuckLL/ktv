@@ -24,12 +24,15 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --locked --no-install-project
 
 # Copy source and install project
-COPY . /app
+COPY pyproject.toml uv.lock /app/
+COPY src /app/src
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --locked
 
-# Give app user ownership of the working directory
-RUN mkdir -p /app/cache && chown -R app:app /app
+# Create writable runtime paths without rewriting the dependency layer.
+RUN mkdir -p /app/cache && \
+    touch /app/ktv.db && \
+    chown app:app /app /app/cache /app/ktv.db
 
 ENTRYPOINT []
 
