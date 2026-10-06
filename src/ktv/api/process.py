@@ -9,10 +9,16 @@ from ktv.config import CACHE_DIR
 from ktv.core.downloader import download_video, _extract_video_id
 from ktv.core.separator import separate_vocals, separated_audio_ready
 from ktv.core.db import upsert_pending_video, upsert_video, get_all_videos
+from ktv.core.cache import touch
 
 router = APIRouter()
 
 _jobs: dict[str, dict] = {}
+
+
+def active_video_ids() -> set[str]:
+    """Videos being downloaded or separated; cache eviction must leave them alone."""
+    return {vid for vid, job in _jobs.items() if job.get("status") in {"queued", "processing"}}
 
 
 class ProcessRequest(BaseModel):
@@ -30,6 +36,7 @@ async def process(req: ProcessRequest):
     if separated_audio_ready(video_id):
         meta = await _get_video_meta(video_id)
         if meta:
+            await touch(video_id)
             return {"status": "done", "pct": 100, **meta}
 
     job = _jobs.get(video_id)

@@ -33,6 +33,11 @@ CREATE TABLE IF NOT EXISTS selections (
 async def init_db():
     async with aiosqlite.connect(DB_PATH) as db:
         await db.executescript(DDL)
+        # Databases created before cache eviction lack last_accessed; add it in place.
+        async with db.execute("PRAGMA table_info(videos)") as cur:
+            columns = {row[1] for row in await cur.fetchall()}
+        if "last_accessed" not in columns:
+            await db.execute("ALTER TABLE videos ADD COLUMN last_accessed INTEGER")
         await db.commit()
 
 
@@ -42,10 +47,10 @@ async def upsert_video(meta: dict, processed_at: int):
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute(
             "INSERT OR REPLACE INTO videos "
-            "(video_id, title, artist, duration, thumbnail, processed_at) "
-            "VALUES (?,?,?,?,?,?)",
+            "(video_id, title, artist, duration, thumbnail, processed_at, last_accessed) "
+            "VALUES (?,?,?,?,?,?,?)",
             (meta["video_id"], meta.get("title"), meta.get("artist"),
-             meta.get("duration"), meta.get("thumbnail"), processed_at),
+             meta.get("duration"), meta.get("thumbnail"), processed_at, processed_at),
         )
         await db.commit()
 
@@ -76,6 +81,22 @@ async def get_all_videos() -> list[dict]:
         ) as cur:
             rows = await cur.fetchall()
     return [dict(r) for r in rows]
+
+
+async def touch_video(video_id: str, accessed_at: int):
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            "UPDATE videos SET last_accessed=? WHERE video_id=?", (accessed_at, video_id)
+        )
+        await db.commit()
+
+
+async def delete_video(video_id: str):
+    """Drop a song from the library. Offsets and lyric selections are kept, so
+    processing the same video again restores the user's choices."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("DELETE FROM videos WHERE video_id=?", (video_id,))
+        await db.commit()
 
 
 # ── Offsets ───────────────────────────────────────────

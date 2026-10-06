@@ -1,3 +1,4 @@
+import asyncio
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -6,7 +7,8 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 
 from ktv.core.db import init_db
-from ktv.api.process import router as process_router
+from ktv.core.cache import evict_forever
+from ktv.api.process import router as process_router, active_video_ids
 from ktv.api.lyrics import router as lyrics_router
 from ktv.api.video import router as video_router
 from ktv.api.offset import router as offset_router
@@ -17,7 +19,9 @@ from ktv.api.selection import router as selection_router
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await init_db()
+    evictor = asyncio.create_task(evict_forever(active_video_ids))
     yield
+    evictor.cancel()
 
 
 app = FastAPI(title="KTV", lifespan=lifespan)
