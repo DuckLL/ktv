@@ -13,9 +13,10 @@ from ktv.config import CACHE_DIR
 log = logging.getLogger("uvicorn.error")
 
 # YouTube sporadically answers a stream URL with 403 (formats behind its PO
-# token checks); in testing about one download in six, and a fresh extraction
-# right after gets a new URL that works. Retry only that case.
-DOWNLOAD_ATTEMPTS = 3
+# token checks); in testing about one download in six, sometimes twice in a
+# row, and a fresh extraction right after gets a new URL that works. Retry only
+# that case; five attempts wait at most 3+6+9+12 = 30 s.
+DOWNLOAD_ATTEMPTS = 5
 RETRY_DELAY = 3  # seconds, multiplied by the attempt number
 
 
