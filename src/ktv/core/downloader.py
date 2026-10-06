@@ -1,11 +1,40 @@
 import asyncio
 import json
+import logging
 import re
+import time
 from pathlib import Path
 
 import yt_dlp
+from yt_dlp.utils import DownloadError
 
 from ktv.config import CACHE_DIR
+
+log = logging.getLogger("uvicorn.error")
+
+# YouTube sporadically answers a stream URL with 403 (formats behind its PO
+# token checks); in testing about one download in six, and a fresh extraction
+# right after gets a new URL that works. Retry only that case.
+DOWNLOAD_ATTEMPTS = 3
+RETRY_DELAY = 3  # seconds, multiplied by the attempt number
+
+
+def _download_with_retry(opts: dict, url: str, *, sleep=time.sleep) -> dict:
+    out = Path(opts["outtmpl"])
+    for attempt in range(1, DOWNLOAD_ATTEMPTS + 1):
+        try:
+            with yt_dlp.YoutubeDL(opts) as ydl:
+                return ydl.extract_info(url, download=True)
+        except DownloadError as exc:
+            if "HTTP Error 403" not in str(exc) or attempt == DOWNLOAD_ATTEMPTS:
+                raise
+            log.warning("download: HTTP 403 for %s (attempt %d/%d), retrying with a fresh extraction",
+                        out.name, attempt, DOWNLOAD_ATTEMPTS)
+            # A partial file from the rejected URL must not be resumed against a new one.
+            for leftover in (out, out.with_name(out.name + ".part")):
+                leftover.unlink(missing_ok=True)
+            sleep(RETRY_DELAY * attempt)
+    raise AssertionError("unreachable")
 
 
 def _extract_video_id(url: str) -> str:
@@ -77,8 +106,7 @@ async def download_video(url: str, progress_cb=None) -> tuple[str, dict]:
             "quiet": True,
             "no_warnings": True,
         }
-        with yt_dlp.YoutubeDL(ydl_video_opts) as ydl:
-            info = ydl.extract_info(url, download=True)
+        info = _download_with_retry(ydl_video_opts, url)
 
         # Opus/WebM audio — zero transcoding
         ydl_audio_opts = {
@@ -87,8 +115,7 @@ async def download_video(url: str, progress_cb=None) -> tuple[str, dict]:
             "quiet": True,
             "no_warnings": True,
         }
-        with yt_dlp.YoutubeDL(ydl_audio_opts) as ydl:
-            ydl.extract_info(url, download=True)
+        _download_with_retry(ydl_audio_opts, url)
 
         artist, title = _parse_artist_title(info)
         meta = {
