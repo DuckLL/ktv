@@ -46,12 +46,14 @@ YouTube 的影片網址要先跑一段 YouTube 的 JavaScript 才解得開，yt-
 - Docker image 內建 [deno](https://deno.com)（`Dockerfile` 從 `denoland/deno` 複製），yt-dlp 以 `yt-dlp[default]` 安裝，含解題元件 `yt-dlp-ejs`。
 - 本機開發要自己裝 deno（`curl -fsSL https://deno.land/install.sh | sh`），否則 yt-dlp 會警告 `No supported JavaScript runtime`，多數影片下載時回 **HTTP 403**。
 
-YouTube 經常改版，yt-dlp 也要跟著更新；`uv.lock` 會把版本鎖住，重新 build 不會自己變新。遇到 403 先更新再 rebuild：
+YouTube 經常改版，yt-dlp 也要跟著更新，所以 **yt-dlp 不照 `uv.lock`**：`Dockerfile` 最後一層在每次 build 時把它升到最新版，其他套件仍照 lock。這一層的快取靠 build arg `YTDLP_REFRESH` 打破，改它的值就只重做這一步（模型與其他相依不重抓）：
 
 ```bash
-uv lock --upgrade-package yt-dlp
-docker compose up -d --build
+docker compose build --build-arg YTDLP_REFRESH=$(date +%G-W%V)   # 例如每週一次
+docker compose up -d
 ```
+
+遇到 403 就照上面重新 build 一次。`uv.lock` 裡的 yt-dlp 只代表本機開發與最低版本，偶爾用 `uv lock --upgrade-package yt-dlp` 跟上即可。
 
 ## 使用說明
 

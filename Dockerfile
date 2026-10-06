@@ -43,5 +43,17 @@ ENTRYPOINT []
 USER app
 RUN python -c "import demucs.pretrained; demucs.pretrained.get_model('htdemucs')" || true
 
+# yt-dlp has to keep up with YouTube, so it is the one dependency taken at its
+# newest release on every build instead of from uv.lock. This stays the last
+# layer: changing YTDLP_REFRESH (e.g. to the ISO week) rebuilds only this step,
+# not the dependencies or the demucs model above.
+USER root
+ARG YTDLP_REFRESH=manual
+RUN --mount=type=cache,target=/root/.cache/uv \
+    echo "yt-dlp refresh: ${YTDLP_REFRESH}" && \
+    uv pip install --python /app/.venv/bin/python --upgrade "yt-dlp[default]" && \
+    python -c "import yt_dlp.version as v; print('yt-dlp', v.__version__)"
+USER app
+
 EXPOSE 8000
 CMD ["uvicorn", "ktv.main:app", "--host", "0.0.0.0", "--port", "8000"]
