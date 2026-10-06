@@ -6,6 +6,10 @@ RUN apt-get update && \
     apt-get install -y --no-install-recommends ffmpeg && \
     rm -rf /var/lib/apt/lists/*
 
+# JavaScript runtime for yt-dlp's YouTube challenge solver (yt-dlp-ejs). Without
+# it yt-dlp falls back to clients that cannot fetch most videos (HTTP 403).
+COPY --from=denoland/deno:bin-2.9.7 /deno /usr/local/bin/deno
+
 # Non-root user
 RUN groupadd --system --gid 999 app && \
     useradd --system --uid 999 --gid 999 --create-home app

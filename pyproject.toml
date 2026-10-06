@@ -5,7 +5,9 @@ requires-python = ">=3.12"
 dependencies = [
     "fastapi>=0.115",
     "uvicorn[standard]>=0.34",
-    "yt-dlp>=2025.1",
+    # [default] pulls in yt-dlp-ejs, which solves YouTube's JS challenges with the
+    # deno runtime installed in the Docker image; without both, downloads get 403.
+    "yt-dlp[default]>=2026.8.19",
     "demucs>=4.0",
     "httpx>=0.28",
     "python-multipart>=0.0.20",

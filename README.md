@@ -39,6 +39,20 @@ docker compose up --build
 > 避免 host bind mount 的空目錄權限造成 SQLite 無法建立 `ktv.db`。
 > 若你有舊版根目錄的 `ktv.db`，可匯入到 `ktv-data` volume 的 `/app/data/ktv.db`。
 
+## YouTube 下載與 403
+
+YouTube 的影片網址要先跑一段 YouTube 的 JavaScript 才解得開，yt-dlp 把這件事交給外部 JS runtime：
+
+- Docker image 內建 [deno](https://deno.com)（`Dockerfile` 從 `denoland/deno` 複製），yt-dlp 以 `yt-dlp[default]` 安裝，含解題元件 `yt-dlp-ejs`。
+- 本機開發要自己裝 deno（`curl -fsSL https://deno.land/install.sh | sh`），否則 yt-dlp 會警告 `No supported JavaScript runtime`，多數影片下載時回 **HTTP 403**。
+
+YouTube 經常改版，yt-dlp 也要跟著更新；`uv.lock` 會把版本鎖住，重新 build 不會自己變新。遇到 403 先更新再 rebuild：
+
+```bash
+uv lock --upgrade-package yt-dlp
+docker compose up -d --build
+```
+
 ## 使用說明
 
 1. 在首頁貼上 YouTube 網址，按「開始處理」
