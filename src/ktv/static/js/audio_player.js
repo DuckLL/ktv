@@ -11,29 +11,34 @@ export class SynchronizedAudioPlayer {
       gain.connect(context.destination);
       return gain;
     });
-    this.sources = [];
-    this.buffers = null;
-    this.loading = null;
+    this.sources = urls.map(() => null);
+    this.buffers = urls.map(() => null);
+    this.loads = [];
+    this.decoding = Promise.resolve();
     this.playing = false;
     this.offset = 0;
     this.startedAt = 0;
     this.revision = 0;
   }
 
+  // Playback needs only the first track; the others can load behind it.
   load() {
-    if (!this.loading) {
-      this.loading = (async () => {
-        const buffers = [];
-        // Avoid two large decoder jobs competing for memory on mobile devices.
-        for (const url of this.urls) {
-          const response = await this.fetchAudio(url);
-          if (!response.ok) throw new Error(`Audio download failed (${response.status})`);
-          buffers.push(await this.context.decodeAudioData(await response.arrayBuffer()));
-        }
-        this.buffers = buffers;
-      })();
-    }
-    return this.loading;
+    return this.loadTrack(0);
+  }
+
+  loadTrack(index) {
+    this.loads[index] ??= (async () => {
+      const response = await this.fetchAudio(this.urls[index]);
+      if (!response.ok) throw new Error(`Audio download failed (${response.status})`);
+      const data = await response.arrayBuffer();
+      // Avoid two large decoder jobs competing for memory on mobile devices.
+      const decoded = this.decoding.then(() => this.context.decodeAudioData(data));
+      this.decoding = decoded.catch(() => {});
+      this.buffers[index] = await decoded;
+      // A track that finishes loading mid-song joins the running clock.
+      if (this.playing) this.startTrack(index, this.context.currentTime + 0.02);
+    })();
+    return this.loads[index];
   }
 
   setVolumes(volumes) {
@@ -61,21 +66,29 @@ export class SynchronizedAudioPlayer {
     this.offset = Math.max(0, time);
     this.startedAt = this.context.currentTime + 0.02;
     this.playing = true;
-    this.sources = this.buffers.map((buffer, index) => {
-      const source = this.context.createBufferSource();
-      source.buffer = buffer;
-      source.connect(this.gains[index]);
-      if (this.offset < buffer.duration) source.start(this.startedAt, this.offset);
-      return source;
+    this.buffers.forEach((buffer, index) => {
+      if (buffer) this.startTrack(index, this.startedAt);
     });
+  }
+
+  // Play from the shared timeline's position at context time `when`.
+  startTrack(index, when) {
+    const buffer = this.buffers[index];
+    const position = this.offset + Math.max(0, when - this.startedAt);
+    const source = this.context.createBufferSource();
+    source.buffer = buffer;
+    source.connect(this.gains[index]);
+    if (position < buffer.duration) source.start(when, position);
+    this.sources[index] = source;
   }
 
   stopSources() {
     this.sources.forEach(source => {
+      if (!source) return;
       try { source.stop(); } catch (_) {}
       source.disconnect();
     });
-    this.sources = [];
+    this.sources = this.urls.map(() => null);
   }
 
   pause() {

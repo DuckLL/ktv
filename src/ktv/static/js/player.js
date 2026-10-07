@@ -175,7 +175,25 @@ const audioStatus = document.getElementById('audioStatus');
 function showAudioError() {
   audioStatus.textContent = '音訊載入失敗，請在首頁重新處理這首歌';
 }
-audioPlayer.load().then(() => { audioStatus.textContent = ''; }).catch(showAudioError);
+function reportLoading(loading, message, errorMessage) {
+  audioStatus.textContent = message;
+  loading.then(
+    () => { if (audioStatus.textContent === message) audioStatus.textContent = ''; },
+    () => { audioStatus.textContent = errorMessage; },
+  );
+}
+const accompaniment = audioPlayer.load();
+reportLoading(accompaniment, '音訊載入中…', '音訊載入失敗，請在首頁重新處理這首歌');
+// Preload the original right behind the accompaniment: guide vocals are ready
+// when the slider moves, while playback waits only for the accompaniment.
+accompaniment.then(() => reportLoading(audioPlayer.loadTrack(1), '原唱載入中…', '原唱載入失敗，請在首頁重新處理這首歌'), () => {});
+
+// timeupdate fires only about four times a second; follow the audio clock every frame.
+function followLyrics() {
+  if (audioPlayer.playing) syncLyrics(audioPlayer.currentTime);
+  requestAnimationFrame(followLyrics);
+}
+requestAnimationFrame(followLyrics);
 let masterVolume = 0.8;
 let mixAmount = 0;
 const volumeSlider = document.getElementById('volumeSlider');
