@@ -52,8 +52,8 @@ function updateNavigation() {
 }
 
 function navigatePlayback(direction) {
-  // Use the requested video position so repeated key presses work while seeking.
-  video.currentTime = getNavigationTime(lrcLines, video.currentTime, direction, offsetSeconds, video.duration);
+  // Use the same clock as the highlighted lyric so jumps never land one line off.
+  videoSync.seek(getNavigationTime(lrcLines, videoSync.currentTime, direction, offsetSeconds, video.duration));
 }
 previousLine.addEventListener('click', () => navigatePlayback(-1));
 nextLine.addEventListener('click', () => navigatePlayback(1));
@@ -81,7 +81,7 @@ function renderLyrics() {
     el.className = 'lyric-line';
     el.dataset.idx = i;
     el.textContent = line.text;
-    el.addEventListener('click', () => { video.currentTime = Math.max(0, line.time - offsetSeconds); });
+    el.addEventListener('click', () => videoSync.seek(Math.max(0, line.time - offsetSeconds)));
     lyricsStage.appendChild(el);
   });
 }
@@ -112,7 +112,7 @@ function syncLyrics(currentTime) {
   }
 }
 
-video.addEventListener('timeupdate', () => syncLyrics(audioPlayer.playing ? audioPlayer.currentTime : video.currentTime));
+video.addEventListener('timeupdate', () => syncLyrics(videoSync.currentTime));
 
 // ── Offset controls ───────────────────────────────────
 const offsetValueEl = document.getElementById('offsetValue');
@@ -216,7 +216,7 @@ video.addEventListener('pause', () => {
   }
 });
 video.addEventListener('ended', () => { audioPlayer.pause(); videoSync.reset(); });
-video.addEventListener('seeked', () => videoSync.seeked());
+video.addEventListener('seeking', () => videoSync.seeking());
 video.addEventListener('timeupdate', () => {
   if (!document.hidden) videoSync.followAudio();
 });

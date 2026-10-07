@@ -5,7 +5,7 @@ import { VideoAudioSync } from '../src/ktv/static/js/video_sync.js';
 function fixture() {
   const seeks = [];
   const video = { currentTime: 10, duration: 180, playbackRate: 1, paused: false, seeking: false, readyState: 4 };
-  const audio = { currentTime: 10, playing: true, seek: time => seeks.push(time) };
+  const audio = { currentTime: 10, playing: true, seek: time => { seeks.push(time); audio.currentTime = time; } };
   return { video, audio, seeks, sync: new VideoAudioSync(video, audio) };
 }
 
@@ -20,17 +20,16 @@ test('repeated 200 ms video jitter never seeks the audio', () => {
   assert.deepEqual(seeks, []);
 });
 
-test('large drift seeks only the video and ignores its resulting seeked event', () => {
+test('large drift seeks only the video and ignores its resulting seeking event', () => {
   const { video, audio, seeks, sync } = fixture();
   video.currentTime = 8;
   sync.followAudio();
   assert.equal(video.currentTime, audio.currentTime);
   video.seeking = true;
-  audio.currentTime += 0.3;
+  audio.currentTime += 0.1;
+  sync.seeking();
   sync.followAudio();
   assert.equal(video.currentTime, 10);
-  video.seeking = false;
-  sync.seeked();
   assert.deepEqual(seeks, []);
 });
 
@@ -43,11 +42,37 @@ test('buffering does not restart audio or repeatedly seek the video', () => {
   assert.deepEqual(seeks, []);
 });
 
-test('a user seek still changes the shared audio timeline', () => {
+test('a native-controls seek survives the timeupdate browsers fire before seeked', () => {
   const { video, seeks, sync } = fixture();
   video.currentTime = 35;
-  sync.seeked();
+  video.seeking = true;
+  sync.seeking();
+  video.seeking = false;
+  sync.followAudio();
+  assert.equal(video.currentTime, 35);
   assert.deepEqual(seeks, [35]);
+});
+
+test('keyboard and lyric seeks move both clocks before the video finishes seeking', () => {
+  const { video, seeks, sync } = fixture();
+  video.playbackRate = 1.03;
+  sync.seek(35);
+  assert.equal(sync.currentTime, 35);
+  assert.equal(video.currentTime, 35);
+  assert.equal(video.playbackRate, 1);
+  video.seeking = true;
+  sync.seeking();
+  video.seeking = false;
+  sync.followAudio();
+  assert.equal(video.currentTime, 35);
+  assert.deepEqual(seeks, [35]);
+});
+
+test('paused playback reports the requested video position', () => {
+  const { video, audio, sync } = fixture();
+  audio.playing = false;
+  video.currentTime = 42;
+  assert.equal(sync.currentTime, 42);
 });
 
 test('a user can override an in-flight automatic video correction', () => {
@@ -55,7 +80,7 @@ test('a user can override an in-flight automatic video correction', () => {
   video.currentTime = 8;
   sync.followAudio();
   video.currentTime = 35;
-  sync.seeked();
+  sync.seeking();
   assert.deepEqual(seeks, [35]);
 });
 
@@ -65,6 +90,6 @@ test('returning to a paused background video follows ongoing audio', () => {
   audio.currentTime = 30;
   sync.followAudio({ force: true });
   assert.equal(video.currentTime, 30);
-  sync.seeked();
+  sync.seeking();
   assert.deepEqual(seeks, []);
 });

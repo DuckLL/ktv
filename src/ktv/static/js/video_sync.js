@@ -4,18 +4,28 @@ export class VideoAudioSync {
   constructor(video, audio) {
     this.video = video;
     this.audio = audio;
-    this.correctionTarget = null;
+  }
+
+  get currentTime() {
+    return this.audio.playing ? this.audio.currentTime : this.video.currentTime;
+  }
+
+  // Keyboard, buttons and lyrics move both clocks at once, so the lyrics and
+  // repeated jumps see the new position before the video finishes seeking.
+  seek(time) {
+    this.audio.seek(time);
+    this.video.playbackRate = 1;
+    this.video.currentTime = time;
   }
 
   followAudio({ force = false } = {}) {
     const video = this.video;
-    if (!this.audio.playing || video.seeking || this.correctionTarget !== null) return;
+    if (!this.audio.playing || video.seeking) return;
     if (!force && (video.paused || video.readyState < 2)) return;
     const time = this.audio.currentTime;
     if (!Number.isFinite(time) || (Number.isFinite(video.duration) && time >= video.duration)) return;
     const drift = video.currentTime - time;
     if (Math.abs(drift) > 0.5 || (force && Math.abs(drift) > 0.05)) {
-      this.correctionTarget = time;
       video.playbackRate = 1;
       video.currentTime = time;
     } else {
@@ -24,17 +34,15 @@ export class VideoAudioSync {
     }
   }
 
-  seeked() {
-    const target = this.correctionTarget;
-    this.correctionTarget = null;
-    this.video.playbackRate = 1;
-    if (target !== null && Math.abs(this.video.currentTime - target) <= 0.25) return;
-    // A seek from the native controls, keyboard or lyrics is intentional.
-    this.audio.seek(this.video.currentTime);
+  // Browsers fire timeupdate before seeked, with seeking already false, so a
+  // native-controls seek must move the audio on `seeking` or followAudio would
+  // pull the video back. Corrections and seek() already match the audio clock.
+  seeking() {
+    const time = this.video.currentTime;
+    if (Math.abs(time - this.audio.currentTime) > 0.25) this.audio.seek(time);
   }
 
   reset() {
-    this.correctionTarget = null;
     this.video.playbackRate = 1;
   }
 }
