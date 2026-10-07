@@ -14,6 +14,7 @@ class FakeYoutubeDL:
     def __init__(self, outcomes):
         self.outcomes = list(outcomes)
         self.calls = 0
+        self.methods = []
 
     def __call__(self, opts):
         self.calls += 1
@@ -22,14 +23,16 @@ class FakeYoutubeDL:
         fake = mock.MagicMock()
         fake.__enter__.return_value = fake
 
-        def extract_info(url, download):
+        def run(method):
+            self.methods.append(method)
             if isinstance(outcome, Exception):
                 out.with_name(out.name + ".part").write_text("partial")
                 raise outcome
             out.write_text("media")
             return outcome
 
-        fake.extract_info.side_effect = extract_info
+        fake.extract_info.side_effect = lambda url, download: run("extract_info")
+        fake.process_ie_result.side_effect = lambda info, download: run("process_ie_result")
         return fake
 
 
@@ -61,6 +64,16 @@ class DownloadRetryTests(unittest.TestCase):
         self.assertEqual(self.slept, [downloader.RETRY_DELAY])
         self.assertFalse(self.out.with_name("audio.webm.part").exists())
         self.assertEqual(self.out.read_text(), "media")
+
+    def test_shared_extraction_is_reused_until_a_403_needs_a_fresh_one(self):
+        fake = FakeYoutubeDL([forbidden(), {"format_id": "251"}])
+        info = {"id": "abc12345678", "formats": []}
+        with mock.patch.object(downloader.yt_dlp, "YoutubeDL", fake):
+            result = downloader._download_with_retry(self.opts, "url", info, sleep=self.slept.append)
+
+        self.assertEqual(result, {"format_id": "251"})
+        self.assertEqual(fake.methods, ["process_ie_result", "extract_info"])
+        self.assertEqual(info, {"id": "abc12345678", "formats": []})
 
     def test_other_errors_are_not_retried(self):
         fake = FakeYoutubeDL([DownloadError("ERROR: Video unavailable")])

@@ -1,4 +1,5 @@
 import asyncio
+import copy
 import json
 import logging
 import re
@@ -21,11 +22,14 @@ DOWNLOAD_ATTEMPTS = 5
 RETRY_DELAY = 3  # seconds, multiplied by the attempt number
 
 
-def _download_with_retry(opts: dict, url: str, *, sleep=time.sleep) -> dict:
+def _download_with_retry(opts: dict, url: str, info: dict | None = None, *, sleep=time.sleep) -> dict:
     out = Path(opts["outtmpl"])
     for attempt in range(1, DOWNLOAD_ATTEMPTS + 1):
         try:
             with yt_dlp.YoutubeDL(opts) as ydl:
+                if info is not None:
+                    # yt-dlp adds the selected format to the dict it processes.
+                    return ydl.process_ie_result(copy.deepcopy(info), download=True)
                 return ydl.extract_info(url, download=True)
         except DownloadError as exc:
             if "HTTP Error 403" not in str(exc) or attempt == DOWNLOAD_ATTEMPTS:
@@ -37,20 +41,25 @@ def _download_with_retry(opts: dict, url: str, *, sleep=time.sleep) -> dict:
                 for leftover in out.parent.glob(pattern.replace("%(ext)s", "*")):
                     if leftover.is_file():
                         leftover.unlink(missing_ok=True)
+            info = None
             sleep(RETRY_DELAY * attempt)
     raise AssertionError("unreachable")
 
 
 def _extract_video_id(url: str) -> str:
-    patterns = [
-        r"(?:v=|youtu\.be/)([A-Za-z0-9_-]{11})",
-        r"(?:embed/)([A-Za-z0-9_-]{11})",
-    ]
-    for pat in patterns:
-        m = re.search(pat, url)
-        if m:
-            return m.group(1)
+    m = re.search(r"(?:[?&]v=|youtu\.be/|/(?:embed|shorts|live)/)([A-Za-z0-9_-]{11})", url)
+    if m:
+        return m.group(1)
     raise ValueError(f"Cannot extract video ID from URL: {url}")
+
+
+def _extract_info(url: str) -> dict:
+    """Extract once (YouTube's JS challenge included) for the duration check and both downloads."""
+    with yt_dlp.YoutubeDL({"quiet": True, "no_warnings": True}) as ydl:
+        info = ydl.extract_info(url, download=False)
+    # Drop the default format selection so each download picks its own stream,
+    # as yt-dlp does for --load-info-json.
+    return yt_dlp.YoutubeDL.sanitize_info(info, remove_private_keys=True)
 
 
 def _parse_artist_title(info: dict) -> tuple[str, str]:
@@ -68,6 +77,9 @@ async def download_video(url: str, progress_cb=None) -> tuple[str, dict]:
     Returns (video_id, metadata_dict).
     """
     video_id = _extract_video_id(url)
+    # A URL copied from a mix or playlist (&list=...) would make yt-dlp
+    # process the whole playlist.
+    url = f"https://www.youtube.com/watch?v={video_id}"
     job_dir = CACHE_DIR / video_id
     job_dir.mkdir(exist_ok=True)
 
@@ -85,16 +97,11 @@ async def download_video(url: str, progress_cb=None) -> tuple[str, dict]:
 
     loop = asyncio.get_event_loop()
 
-    def _check_duration():
-        with yt_dlp.YoutubeDL({"quiet": True, "no_warnings": True}) as ydl:
-            info = ydl.extract_info(url, download=False)
-        duration = info.get("duration") or 0
-        if duration > 600:
-            mins = duration // 60
-            raise ValueError(f"影片長度 {mins} 分鐘，超過 10 分鐘上限")
-        return info
-
-    await loop.run_in_executor(None, _check_duration)
+    source_info = await loop.run_in_executor(None, _extract_info, url)
+    duration = source_info.get("duration") or 0
+    if duration > 600:
+        mins = duration // 60
+        raise ValueError(f"影片長度 {mins} 分鐘，超過 10 分鐘上限")
 
     if progress_cb:
         await progress_cb(10, "Downloading video & audio…")
@@ -109,9 +116,10 @@ async def download_video(url: str, progress_cb=None) -> tuple[str, dict]:
             ),
             "outtmpl": str(video_path),
             "quiet": True,
+            "noprogress": True,
             "no_warnings": True,
         }
-        info = _download_with_retry(ydl_video_opts, url)
+        info = _download_with_retry(ydl_video_opts, url, source_info)
 
         # Do not exclude high-quality AAC or accept lower WebM quality just to
         # keep a particular container. yt-dlp keeps language/quality preferences
@@ -121,9 +129,10 @@ async def download_video(url: str, progress_cb=None) -> tuple[str, dict]:
             "format_sort": ["quality", "abr", "asr", "acodec"],
             "outtmpl": str(job_dir / "original.%(ext)s"),
             "quiet": True,
+            "noprogress": True,
             "no_warnings": False,
         }
-        audio_info = _download_with_retry(ydl_audio_opts, url)
+        audio_info = _download_with_retry(ydl_audio_opts, url, source_info)
         extension = "." + audio_info["ext"]
         if extension not in AUDIO_MEDIA_TYPES:
             raise RuntimeError(f"Unsupported source audio container: {extension}")
