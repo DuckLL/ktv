@@ -39,7 +39,8 @@ function setPanelDefaults() {
   [searchPanel, playbackSettings, offsetSettings].forEach(panel => { panel.open = !mobileLayout.matches; });
 }
 setPanelDefaults();
-mobileLayout.addEventListener('change', setPanelDefaults);
+// Desktop hides the panel headers, so reopen panels there; rotating a phone keeps the user's choice.
+mobileLayout.addEventListener('change', () => { if (!mobileLayout.matches) setPanelDefaults(); });
 
 function updateNavigation() {
   const hasLyrics = lrcLines.length > 0;
