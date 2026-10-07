@@ -1,5 +1,6 @@
 import { parseLrc, findActiveIndex } from '/static/js/lrc.js';
 import { SynchronizedAudioPlayer } from '/static/js/audio_player.js';
+import { VideoAudioSync } from '/static/js/video_sync.js';
 import {
   calculateMixVolumes,
   formatVolumePercent,
@@ -70,7 +71,7 @@ function syncLyrics(currentTime) {
   }
 }
 
-video.addEventListener('timeupdate', () => syncLyrics(video.currentTime));
+video.addEventListener('timeupdate', () => syncLyrics(audioPlayer.playing ? audioPlayer.currentTime : video.currentTime));
 
 // ── Offset controls ───────────────────────────────────
 const offsetValueEl = document.getElementById('offsetValue');
@@ -127,6 +128,7 @@ const audioPlayer = new SynchronizedAudioPlayer([
   `/api/audio/${videoId}/instrumental`,
   `/api/audio/${videoId}/original`,
 ]);
+const videoSync = new VideoAudioSync(video, audioPlayer);
 const audioStatus = document.getElementById('audioStatus');
 function showAudioError() {
   audioStatus.textContent = '音訊載入失敗，請在首頁重新處理這首歌';
@@ -154,25 +156,35 @@ function applyMixVolumes() {
 }
 
 video.addEventListener('play', () => {
+  // A background-tab video resume must not restart audio that kept playing.
+  if (audioPlayer.playing) {
+    videoSync.followAudio({ force: true });
+    return;
+  }
   audioPlayer.play(() => video.currentTime).then(() => {
     if (video.paused && !document.hidden) audioPlayer.pause();
   }).catch(showAudioError);
 });
-video.addEventListener('pause', () => { if (!document.hidden) audioPlayer.pause(); });
-video.addEventListener('ended', () => audioPlayer.pause());
-video.addEventListener('seeked', () => audioPlayer.seek(video.currentTime));
+video.addEventListener('pause', () => {
+  if (!document.hidden) {
+    audioPlayer.pause();
+    videoSync.reset();
+  }
+});
+video.addEventListener('ended', () => { audioPlayer.pause(); videoSync.reset(); });
+video.addEventListener('seeked', () => videoSync.seeked());
 video.addEventListener('timeupdate', () => {
-  if (!document.hidden && !video.paused && !video.seeking) audioPlayer.sync(video.currentTime);
+  if (!document.hidden) videoSync.followAudio();
 });
 
 // The shared audio clock keeps running if a background tab pauses muted video.
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) return;
   if (audioPlayer.playing && video.paused) {
-    video.currentTime = audioPlayer.currentTime;
+    videoSync.followAudio({ force: true });
     video.play().catch(() => {});
   } else if (!video.paused) {
-    audioPlayer.sync(video.currentTime);
+    videoSync.followAudio({ force: true });
   }
 });
 

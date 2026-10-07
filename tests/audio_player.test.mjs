@@ -63,3 +63,27 @@ test('initial playback uses the current video time after downloads finish', asyn
   await playing;
   assert.equal(starts[0][1], 7);
 });
+
+test('large audio decoders do not run concurrently on mobile', async () => {
+  const { player, context } = fixture();
+  let beginFirst, finishFirst;
+  const started = new Promise(resolve => { beginFirst = resolve; });
+  const blocked = new Promise(resolve => { finishFirst = resolve; });
+  let calls = 0;
+  context.decodeAudioData = async () => {
+    calls++;
+    if (calls === 1) {
+      beginFirst();
+      await blocked;
+    }
+    return { duration: 180 };
+  };
+  const loading = player.load();
+  await started;
+  assert.equal(calls, 1);
+  finishFirst();
+  await loading;
+  assert.equal(calls, 2);
+  await player.load();
+  assert.equal(calls, 2);
+});

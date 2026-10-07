@@ -1,7 +1,7 @@
 // Start both decoded tracks on one audio clock. Independent HTMLAudioElements
 // can drift enough to produce comb filtering when their music overlaps.
 export class SynchronizedAudioPlayer {
-  constructor(urls, context = new AudioContext(), fetchAudio = globalThis.fetch.bind(globalThis)) {
+  constructor(urls, context = new AudioContext({ latencyHint: 'playback' }), fetchAudio = globalThis.fetch.bind(globalThis)) {
     this.context = context;
     this.urls = urls;
     this.fetchAudio = fetchAudio;
@@ -22,11 +22,16 @@ export class SynchronizedAudioPlayer {
 
   load() {
     if (!this.loading) {
-      this.loading = Promise.all(this.urls.map(async url => {
-        const response = await this.fetchAudio(url);
-        if (!response.ok) throw new Error(`Audio download failed (${response.status})`);
-        return this.context.decodeAudioData(await response.arrayBuffer());
-      })).then(buffers => { this.buffers = buffers; });
+      this.loading = (async () => {
+        const buffers = [];
+        // Avoid two large decoder jobs competing for memory on mobile devices.
+        for (const url of this.urls) {
+          const response = await this.fetchAudio(url);
+          if (!response.ok) throw new Error(`Audio download failed (${response.status})`);
+          buffers.push(await this.context.decodeAudioData(await response.arrayBuffer()));
+        }
+        this.buffers = buffers;
+      })();
     }
     return this.loading;
   }
@@ -85,7 +90,4 @@ export class SynchronizedAudioPlayer {
     if (this.playing) this.start(this.offset);
   }
 
-  sync(time) {
-    if (this.playing && Math.abs(this.currentTime - time) > 0.15) this.seek(time);
-  }
 }
