@@ -34,16 +34,20 @@ test('mix endpoints play only accompaniment or untouched original', () => {
   assert.deepEqual(calculateMixVolumes(0.8, 1), { instrumental: 0, original: 0.8 });
 });
 
-test('guide vocals retain the squared curve while shared music stays at master volume', () => {
+test('guide vocals follow the slider linearly while shared music stays at master volume', () => {
   for (let percent = 0; percent <= 100; percent++) {
     const mix = percent / 100;
     const gains = calculateMixVolumes(0.8, mix);
     // For source = music + vocals and accompaniment = music, shared music
     // must not double in volume or dip during a crossfade.
     assert.ok(Math.abs(gains.instrumental + gains.original - 0.8) < 1e-12);
-    assert.ok(Math.abs(gains.original - 0.8 * mix * mix) < 1e-12);
+    assert.ok(Math.abs(gains.original - 0.8 * mix) < 1e-12);
   }
   assert.deepEqual(calculateMixVolumes(0, 0.75), { instrumental: 0, original: 0 });
+});
+
+test('half guide vocal plays the vocals at half amplitude', () => {
+  assert.deepEqual(calculateMixVolumes(1, 0.5), { instrumental: 0.5, original: 0.5 });
 });
 
 test('getMixButtonState activates buttons only at pure endpoints', () => {

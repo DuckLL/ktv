@@ -16,11 +16,11 @@ export function calculateMixVolumes(masterVolume, mixAmount) {
   const volume = normalizeMixAmount(masterVolume);
   const mix = normalizeMixAmount(mixAmount);
   // The original already contains accompaniment. Complementary gains keep
-  // its music near the existing level while retaining the gentle guide curve.
-  const originalGain = mix * mix;
+  // its music at the existing level; vocals follow the slider linearly
+  // (50% = half amplitude, -6 dB), so a guide vocal is clearly audible.
   return {
-    instrumental: volume * (1 - originalGain),
-    original: volume * originalGain,
+    instrumental: volume * (1 - mix),
+    original: volume * mix,
   };
 }
 
