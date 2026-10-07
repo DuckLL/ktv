@@ -24,73 +24,101 @@
       </div>
 
       <div class="video-controls">
-        <span class="kbd-hint">← → 快退/進 5s　↑ ↓ 音量</span>
-        <label class="volume-control" for="volumeSlider">
-          <span class="volume-label">音量</span>
-          <input
-            class="volume-slider"
-            id="volumeSlider"
-            type="range"
-            min="0"
-            max="100"
-            step="1"
-            value="80"
-            aria-label="主音量"
-          >
-          <span class="volume-value" id="volumeValue" aria-live="polite">80%</span>
-        </label>
-        <div class="audio-toggle" aria-label="音軌混音">
-          <button class="audio-toggle-btn active" id="btnInstrumental">🎵 伴唱</button>
-          <label class="mix-control" for="vocalMixSlider">
+        <div class="lyric-navigation" aria-label="播放跳轉">
+          <button class="navigation-btn" id="previousLine" aria-label="快退 5 秒">← 退 5 秒</button>
+          <span class="navigation-label" id="navigationLabel">播放跳轉</span>
+          <button class="navigation-btn" id="nextLine" aria-label="快進 5 秒">進 5 秒 →</button>
+        </div>
+        <span class="kbd-hint" id="keyboardHint">← → 前後 5 秒　↑ ↓ 音量</span>
+      </div>
+
+      <details class="playback-settings" id="playbackSettings" open>
+        <summary class="panel-summary">
+          <span>音量與導唱</span>
+          <span class="panel-preview" id="audioSettingsSummary">音量 80% · 伴唱</span>
+          <span class="panel-chevron" aria-hidden="true">⌄</span>
+        </summary>
+        <div class="mix-settings">
+          <label class="volume-control" for="volumeSlider">
+            <span class="volume-label">音量</span>
             <input
-              class="mix-slider"
-              id="vocalMixSlider"
+              class="volume-slider"
+              id="volumeSlider"
               type="range"
               min="0"
               max="100"
               step="1"
-              value="0"
-              aria-label="人聲混音比例"
+              value="80"
+              aria-label="主音量"
             >
-            <span class="mix-value" id="vocalMixValue">0%</span>
+            <span class="volume-value" id="volumeValue" aria-live="polite">80%</span>
           </label>
-          <button class="audio-toggle-btn" id="btnOriginal">🎤 原唱</button>
+          <div class="audio-toggle" aria-label="音軌混音">
+            <button class="audio-toggle-btn active" id="btnInstrumental">🎵 伴唱</button>
+            <label class="mix-control" for="vocalMixSlider">
+              <input
+                class="mix-slider"
+                id="vocalMixSlider"
+                type="range"
+                min="0"
+                max="100"
+                step="1"
+                value="0"
+                aria-label="人聲混音比例"
+              >
+              <span class="mix-value" id="vocalMixValue">0%</span>
+            </label>
+            <button class="audio-toggle-btn" id="btnOriginal">🎤 原唱</button>
+          </div>
         </div>
-      </div>
+      </details>
       <div class="audio-status" id="audioStatus" role="status" aria-live="polite">音訊載入中…</div>
       <div class="lyrics-stage" id="lyricsStage">
         <div class="lyrics-placeholder">載入歌詞中…</div>
       </div>
 
       <!-- Lyrics time offset controls -->
-      <div class="offset-bar" id="offsetBar">
-        <span class="offset-label">歌詞時間差</span>
-        <button class="offset-btn" id="offsetMinus">−0.5s</button>
-        <span class="offset-value" id="offsetValue">0.00 s</span>
-        <button class="offset-btn" id="offsetPlus">+0.5s</button>
-        <button class="offset-btn reset" id="offsetReset">重置</button>
-        <span class="offset-saved" id="offsetSaved">已儲存</span>
-      </div>
+      <details class="offset-settings" id="offsetSettings" open>
+        <summary class="panel-summary">
+          <span>歌詞時間差</span>
+          <span class="panel-preview" id="offsetSummary">+0.00 s</span>
+          <span class="panel-chevron" aria-hidden="true">⌄</span>
+        </summary>
+        <div class="offset-bar" id="offsetBar">
+          <span class="offset-label">歌詞時間差</span>
+          <button class="offset-btn" id="offsetMinus">−0.5s</button>
+          <span class="offset-value" id="offsetValue">0.00 s</span>
+          <button class="offset-btn" id="offsetPlus">+0.5s</button>
+          <button class="offset-btn reset" id="offsetReset">重置</button>
+          <span class="offset-saved" id="offsetSaved">已儲存</span>
+        </div>
+      </details>
     </main>
 
     <!-- Sidebar: lyrics search -->
     <aside class="sidebar">
-      <div class="sidebar-header">歌詞搜尋</div>
-
-      <div class="sidebar-search">
-        <input
-          class="sidebar-input"
-          id="lyricsSearchInput"
-          type="text"
-          placeholder="歌手 歌名…"
-          autocomplete="off"
-        >
-        <button class="sidebar-btn" id="lyricsSearchBtn">搜尋</button>
-      </div>
-
-      <div class="results-list" id="resultsList">
-        <div class="no-results">自動搜尋中…</div>
-      </div>
+      <details class="lyrics-search-panel" id="lyricsSearchPanel" open>
+        <summary class="sidebar-header panel-summary">
+          <span>歌詞搜尋</span>
+          <span class="panel-preview" id="lyricsSelectionSummary">尚未選擇</span>
+          <span class="panel-chevron" aria-hidden="true">⌄</span>
+        </summary>
+        <div class="sidebar-content">
+          <div class="sidebar-search">
+            <input
+              class="sidebar-input"
+              id="lyricsSearchInput"
+              type="text"
+              placeholder="歌手 歌名…"
+              autocomplete="off"
+            >
+            <button class="sidebar-btn" id="lyricsSearchBtn">搜尋</button>
+          </div>
+          <div class="results-list" id="resultsList">
+            <div class="no-results">自動搜尋中…</div>
+          </div>
+        </div>
+      </details>
     </aside>
 
   </div>

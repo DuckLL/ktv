@@ -29,3 +29,19 @@ export function findActiveIndex(lines, currentTime) {
   }
   return lines[lo].time <= currentTime ? lo : -1;
 }
+
+/** Navigate distinct lyric timestamps, falling back to five seconds without LRC. */
+export function getNavigationTime(lines, currentTime, direction, offset = 0, duration = Infinity) {
+  const clamp = time => Math.max(0, Math.min(Number.isFinite(duration) ? duration : Infinity, time));
+  if (!lines.length) return clamp(currentTime + direction * 5);
+  const adjusted = currentTime + offset;
+  const active = findActiveIndex(lines, adjusted + 0.01);
+  if (direction > 0) {
+    const next = lines.find(line => line.time > adjusted + 0.01);
+    return clamp(next ? next.time - offset : currentTime);
+  }
+  if (active < 0) return 0;
+  let previous = active - 1;
+  while (previous >= 0 && lines[previous].time === lines[active].time) previous--;
+  return clamp(lines[Math.max(0, previous)].time - offset);
+}

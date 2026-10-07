@@ -1,4 +1,4 @@
-import { parseLrc, findActiveIndex } from '/static/js/lrc.js';
+import { parseLrc, findActiveIndex, getNavigationTime } from '/static/js/lrc.js';
 import { SynchronizedAudioPlayer } from '/static/js/audio_player.js';
 import { VideoAudioSync } from '/static/js/video_sync.js';
 import {
@@ -28,11 +28,52 @@ let selectedLrcId = null;
 let offsetSeconds = 0;
 
 const lyricsStage = document.getElementById('lyricsStage');
+const previousLine = document.getElementById('previousLine');
+const nextLine = document.getElementById('nextLine');
+const searchPanel = document.getElementById('lyricsSearchPanel');
+const playbackSettings = document.getElementById('playbackSettings');
+const offsetSettings = document.getElementById('offsetSettings');
+const mobileLayout = window.matchMedia('(max-width: 760px)');
+
+function setPanelDefaults() {
+  [searchPanel, playbackSettings, offsetSettings].forEach(panel => { panel.open = !mobileLayout.matches; });
+}
+setPanelDefaults();
+mobileLayout.addEventListener('change', setPanelDefaults);
+
+function updateNavigation() {
+  const hasLyrics = lrcLines.length > 0;
+  previousLine.textContent = hasLyrics ? '← 上一句' : '← 退 5 秒';
+  nextLine.textContent = hasLyrics ? '下一句 →' : '進 5 秒 →';
+  previousLine.setAttribute('aria-label', hasLyrics ? '上一句歌詞' : '快退 5 秒');
+  nextLine.setAttribute('aria-label', hasLyrics ? '下一句歌詞' : '快進 5 秒');
+  document.getElementById('navigationLabel').textContent = hasLyrics ? '歌詞跳轉' : '播放跳轉';
+  document.getElementById('keyboardHint').textContent = hasLyrics ? '← → 上／下一句　↑ ↓ 音量' : '← → 前後 5 秒　↑ ↓ 音量';
+}
+
+function navigatePlayback(direction) {
+  // Use the requested video position so repeated key presses work while seeking.
+  video.currentTime = getNavigationTime(lrcLines, video.currentTime, direction, offsetSeconds, video.duration);
+}
+previousLine.addEventListener('click', () => navigatePlayback(-1));
+nextLine.addEventListener('click', () => navigatePlayback(1));
 
 function renderLyrics() {
+  updateNavigation();
   lyricsStage.innerHTML = '';
   if (!lrcLines.length) {
-    lyricsStage.innerHTML = '<div class="lyrics-placeholder">無歌詞，請從右側搜尋</div>';
+    const placeholder = document.createElement('div');
+    placeholder.className = 'lyrics-placeholder';
+    placeholder.textContent = '尚無同步歌詞';
+    const button = document.createElement('button');
+    button.className = 'lyrics-search-shortcut';
+    button.textContent = '搜尋歌詞';
+    button.addEventListener('click', () => {
+      searchPanel.open = true;
+      document.getElementById('lyricsSearchInput').focus();
+    });
+    placeholder.appendChild(button);
+    lyricsStage.appendChild(placeholder);
     return;
   }
   lrcLines.forEach((line, i) => {
@@ -40,7 +81,7 @@ function renderLyrics() {
     el.className = 'lyric-line';
     el.dataset.idx = i;
     el.textContent = line.text;
-    el.addEventListener('click', () => { video.currentTime = line.time - offsetSeconds; });
+    el.addEventListener('click', () => { video.currentTime = Math.max(0, line.time - offsetSeconds); });
     lyricsStage.appendChild(el);
   });
 }
@@ -81,6 +122,7 @@ let saveTimer = null;
 function setOffset(val) {
   offsetSeconds = Math.round(val * 100) / 100;
   offsetValueEl.textContent = (offsetSeconds >= 0 ? '+' : '') + offsetSeconds.toFixed(2) + ' s';
+  document.getElementById('offsetSummary').textContent = offsetValueEl.textContent;
   activeIdx = -1;
   syncLyrics(video.currentTime);
   scheduleSave();
@@ -153,6 +195,8 @@ function updateVolumeDisplay() {
 function applyMixVolumes() {
   const volumes = calculateMixVolumes(masterVolume, mixAmount);
   audioPlayer.setVolumes([volumes.instrumental, volumes.original]);
+  const mixLabel = mixAmount === 0 ? '伴唱' : mixAmount === 1 ? '原唱' : `導唱 ${Math.round(mixAmount * 100)}%`;
+  document.getElementById('audioSettingsSummary').textContent = `音量 ${Math.round(masterVolume * 100)}% · ${mixLabel}`;
 }
 
 video.addEventListener('play', () => {
@@ -217,15 +261,15 @@ setMix(0);
 
 // ── Keyboard controls ─────────────────────────────────
 document.addEventListener('keydown', (e) => {
-  if (e.target.tagName === 'INPUT') return;
+  if (e.ctrlKey || e.altKey || e.metaKey || e.target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName)) return;
   switch (e.key) {
     case 'ArrowLeft':
       e.preventDefault();
-      video.currentTime = Math.max(0, video.currentTime - 5);
+      navigatePlayback(-1);
       break;
     case 'ArrowRight':
       e.preventDefault();
-      video.currentTime = Math.min(video.duration || Infinity, video.currentTime + 5);
+      navigatePlayback(1);
       break;
     case 'ArrowUp':
       e.preventDefault();
@@ -302,6 +346,8 @@ async function selectLyrics(item, clickedEl) {
 
   await loadOffset(selectedLrcId);
   syncLyrics(video.currentTime);
+  document.getElementById('lyricsSelectionSummary').textContent = item.trackName || '已選擇';
+  if (mobileLayout.matches && lrcLines.length) searchPanel.open = false;
 
   // Persist selection to DB
   saveSelection(item, syncedLyrics);
@@ -334,6 +380,7 @@ async function restoreSelection() {
 
     selectedLrcId = saved.lrclib_id;
     lrcLines = saved.synced_lyrics ? parseLrc(saved.synced_lyrics) : [];
+    document.getElementById('lyricsSelectionSummary').textContent = saved.track_name || '已選擇';
     renderLyrics();
     await loadOffset(selectedLrcId);
     syncLyrics(video.currentTime);
