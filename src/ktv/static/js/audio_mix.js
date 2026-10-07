@@ -15,10 +15,12 @@ export function volumeToSliderValue(value) {
 export function calculateMixVolumes(masterVolume, mixAmount) {
   const volume = normalizeMixAmount(masterVolume);
   const mix = normalizeMixAmount(mixAmount);
-  const vocalGain = mix * mix;
+  // The original already contains accompaniment. Complementary gains keep
+  // its music near the existing level while retaining the gentle guide curve.
+  const originalGain = mix * mix;
   return {
-    instrumental: volume,
-    vocal: Math.round(volume * vocalGain * 100) / 100,
+    instrumental: volume * (1 - originalGain),
+    original: volume * originalGain,
   };
 }
 

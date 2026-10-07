@@ -29,30 +29,21 @@ test('volumeToSliderValue converts volume to a clamped slider value', () => {
   assert.equal(volumeToSliderValue(Number.NaN), '0');
 });
 
-test('calculateMixVolumes keeps accompaniment only at the default mix', () => {
-  assert.deepEqual(calculateMixVolumes(0.8, 0), {
-    instrumental: 0.8,
-    vocal: 0,
-  });
+test('mix endpoints play only accompaniment or untouched original', () => {
+  assert.deepEqual(calculateMixVolumes(0.8, 0), { instrumental: 0.8, original: 0 });
+  assert.deepEqual(calculateMixVolumes(0.8, 1), { instrumental: 0, original: 0.8 });
 });
 
-test('calculateMixVolumes applies a squared vocal guide curve without lowering accompaniment', () => {
-  assert.deepEqual(calculateMixVolumes(0.8, 0.1), {
-    instrumental: 0.8,
-    vocal: 0.01,
-  });
-  assert.deepEqual(calculateMixVolumes(0.8, 0.25), {
-    instrumental: 0.8,
-    vocal: 0.05,
-  });
-  assert.deepEqual(calculateMixVolumes(0.8, 0.5), {
-    instrumental: 0.8,
-    vocal: 0.2,
-  });
-  assert.deepEqual(calculateMixVolumes(0.8, 1), {
-    instrumental: 0.8,
-    vocal: 0.8,
-  });
+test('guide vocals retain the squared curve while shared music stays at master volume', () => {
+  for (let percent = 0; percent <= 100; percent++) {
+    const mix = percent / 100;
+    const gains = calculateMixVolumes(0.8, mix);
+    // For source = music + vocals and accompaniment = music, shared music
+    // must not double in volume or dip during a crossfade.
+    assert.ok(Math.abs(gains.instrumental + gains.original - 0.8) < 1e-12);
+    assert.ok(Math.abs(gains.original - 0.8 * mix * mix) < 1e-12);
+  }
+  assert.deepEqual(calculateMixVolumes(0, 0.75), { instrumental: 0, original: 0 });
 });
 
 test('getMixButtonState activates buttons only at pure endpoints', () => {

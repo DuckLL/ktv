@@ -5,7 +5,7 @@ YouTube 卡拉 OK 播放器。貼上 YouTube 網址，自動下載影片、分�
 ## 功能
 
 - **人聲分離**：使用 [demucs](https://github.com/facebookresearch/demucs) (htdemucs) 分離伴唱與人聲
-- **伴唱 / 人聲混音**：播放時可加入少量人聲導唱，不需重新載入
+- **伴唱 / 原唱混音**：保留下載音源，播放時平順加入原唱導唱；兩軌共用音訊時鐘，伴奏總增益維持固定
 - **同步歌詞**：自動從 [lrclib.net](https://lrclib.net) 搜尋，支援 LRC 格式逐字同步
 - **歌詞時間差調整**：可微調歌詞與音樂的偏移量，設定自動儲存
 - **記憶選擇**：記住上次選的歌詞版本，下次進入直接顯示
@@ -79,10 +79,17 @@ docker compose up -d
 ```
 cache/{video_id}/
   video_only.webm  # 純影片（無音軌）
-  no_vocals.webm   # 伴唱音訊
-  vocals.webm      # 純人聲音訊
+  original.webm   # 未重新編碼的原唱（依來源也可能是 original.m4a 等）
+  no_vocals.webm  # 伴唱音訊，Opus 256 kbps
+  separation.json # 分離工具與版本，用於判斷快取是否需要重建
   meta.json        # 標題、歌手等元資料
 ```
+
+下載使用不限容器的 `bestaudio`，依品質、碼率及取樣率選擇可取得的最佳音軌；實際格式、codec、碼率、取樣率與 yt-dlp 版本會記錄於 `meta.json` 的 `source_audio`。原唱直接播放下載內容，不經 Demucs 或再次編碼。
+
+導唱比例沿用平方曲線：原唱增益為 `音量 × 比例²`，伴唱增益為 `音量 × (1 − 比例²)`。因此原唱包含的伴奏不會被重複加到全音量；100% 直接播放原唱。分離輸出保持來源增益，只對超出範圍的峰值做限幅。
+
+播放器會先解碼兩個音軌；長歌曲會使用較多瀏覽器記憶體。舊版快取已刪除原唱，需在首頁重新送出同一網址；新流程會自動重建不符合版本的伴唱快取。
 
 影片庫與歌詞選擇記錄存於 `data/ktv.db`（SQLite）。
 

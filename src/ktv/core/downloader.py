@@ -9,6 +9,7 @@ import yt_dlp
 from yt_dlp.utils import DownloadError
 
 from ktv.config import CACHE_DIR
+from ktv.core.audio import AUDIO_MEDIA_TYPES, original_audio_path
 
 log = logging.getLogger("uvicorn.error")
 
@@ -32,8 +33,10 @@ def _download_with_retry(opts: dict, url: str, *, sleep=time.sleep) -> dict:
             log.warning("download: HTTP 403 for %s (attempt %d/%d), retrying with a fresh extraction",
                         out.name, attempt, DOWNLOAD_ATTEMPTS)
             # A partial file from the rejected URL must not be resumed against a new one.
-            for leftover in (out, out.with_name(out.name + ".part")):
-                leftover.unlink(missing_ok=True)
+            for pattern in (out.name, out.name + ".part", out.name + ".ytdl"):
+                for leftover in out.parent.glob(pattern.replace("%(ext)s", "*")):
+                    if leftover.is_file():
+                        leftover.unlink(missing_ok=True)
             sleep(RETRY_DELAY * attempt)
     raise AssertionError("unreachable")
 
@@ -61,7 +64,7 @@ def _parse_artist_title(info: dict) -> tuple[str, str]:
 
 async def download_video(url: str, progress_cb=None) -> tuple[str, dict]:
     """
-    Download VP9/WebM video + Opus/WebM audio directly from YouTube (no transcoding).
+    Download video and the best available audio in its native container, without transcoding.
     Returns (video_id, metadata_dict).
     """
     video_id = _extract_video_id(url)
@@ -69,12 +72,13 @@ async def download_video(url: str, progress_cb=None) -> tuple[str, dict]:
     job_dir.mkdir(exist_ok=True)
 
     video_path = job_dir / "video_only.webm"
-    audio_path = job_dir / "audio.webm"
     meta_path = job_dir / "meta.json"
 
-    if meta_path.exists() and video_path.exists() and audio_path.exists():
+    if meta_path.exists() and video_path.exists() and original_audio_path(job_dir):
         with open(meta_path) as f:
-            return video_id, json.load(f)
+            meta = json.load(f)
+        if meta.get("source_audio"):
+            return video_id, meta
 
     if progress_cb:
         await progress_cb(5, "Fetching video info…")
@@ -109,14 +113,33 @@ async def download_video(url: str, progress_cb=None) -> tuple[str, dict]:
         }
         info = _download_with_retry(ydl_video_opts, url)
 
-        # Opus/WebM audio — zero transcoding
+        # Do not exclude high-quality AAC or accept lower WebM quality just to
+        # keep a particular container. yt-dlp keeps language/quality preferences
+        # and then chooses the highest available bitrate and sample rate.
         ydl_audio_opts = {
-            "format": "bestaudio[ext=webm]/bestaudio[acodec=opus]",
-            "outtmpl": str(audio_path),
+            "format": "bestaudio",
+            "format_sort": ["quality", "abr", "asr", "acodec"],
+            "outtmpl": str(job_dir / "original.%(ext)s"),
             "quiet": True,
-            "no_warnings": True,
+            "no_warnings": False,
         }
-        _download_with_retry(ydl_audio_opts, url)
+        audio_info = _download_with_retry(ydl_audio_opts, url)
+        extension = "." + audio_info["ext"]
+        if extension not in AUDIO_MEDIA_TYPES:
+            raise RuntimeError(f"Unsupported source audio container: {extension}")
+        audio_path = job_dir / f"original{extension}"
+        if not audio_path.is_file() or not audio_path.stat().st_size:
+            raise RuntimeError("yt-dlp did not produce the selected audio file")
+        source_audio = {
+            "file": audio_path.name,
+            "format_id": audio_info.get("format_id"),
+            "codec": audio_info.get("acodec"),
+            "bitrate_kbps": audio_info.get("abr"),
+            "sample_rate": audio_info.get("asr"),
+            "channels": audio_info.get("audio_channels"),
+            "yt_dlp_version": yt_dlp.version.__version__,
+        }
+        log.info("audio source for %s: %s", video_id, source_audio)
 
         artist, title = _parse_artist_title(info)
         meta = {
@@ -125,9 +148,11 @@ async def download_video(url: str, progress_cb=None) -> tuple[str, dict]:
             "artist": artist,
             "duration": info.get("duration", 0),
             "thumbnail": info.get("thumbnail", ""),
+            "source_audio": source_audio,
         }
-        with open(meta_path, "w") as f:
-            json.dump(meta, f)
+        temporary_meta = meta_path.with_suffix(".json.tmp")
+        temporary_meta.write_text(json.dumps(meta))
+        temporary_meta.replace(meta_path)
         return meta
 
     meta = await loop.run_in_executor(None, _run_ytdlp)

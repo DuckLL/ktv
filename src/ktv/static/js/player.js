@@ -1,4 +1,5 @@
 import { parseLrc, findActiveIndex } from '/static/js/lrc.js';
+import { SynchronizedAudioPlayer } from '/static/js/audio_player.js';
 import {
   calculateMixVolumes,
   formatVolumePercent,
@@ -122,13 +123,15 @@ document.getElementById('offsetPlus').addEventListener('click',  () => setOffset
 document.getElementById('offsetReset').addEventListener('click', () => setOffset(0));
 
 // ── Audio setup ───────────────────────────────────────
-// The video has no audio track; both audio elements are mixed separately.
-const instrAudio = new Audio(`/api/audio/${videoId}/instrumental`);
-const vocalAudio = new Audio(`/api/audio/${videoId}/vocals`);
-instrAudio.preload = 'auto';
-vocalAudio.preload = 'auto';
-
-const audioTracks = [instrAudio, vocalAudio];
+const audioPlayer = new SynchronizedAudioPlayer([
+  `/api/audio/${videoId}/instrumental`,
+  `/api/audio/${videoId}/original`,
+]);
+const audioStatus = document.getElementById('audioStatus');
+function showAudioError() {
+  audioStatus.textContent = '音訊載入失敗，請在首頁重新處理這首歌';
+}
+audioPlayer.load().then(() => { audioStatus.textContent = ''; }).catch(showAudioError);
 let masterVolume = 0.8;
 let mixAmount = 0;
 const volumeSlider = document.getElementById('volumeSlider');
@@ -147,69 +150,29 @@ function updateVolumeDisplay() {
 
 function applyMixVolumes() {
   const volumes = calculateMixVolumes(masterVolume, mixAmount);
-  instrAudio.volume = volumes.instrumental;
-  vocalAudio.volume = volumes.vocal;
-}
-
-function setAudioTime(audio, time) {
-  try {
-    audio.currentTime = time;
-  } catch (_) {}
-}
-
-function playAudio(audio) {
-  const playPromise = audio.play();
-  if (playPromise?.catch) playPromise.catch(() => {});
-}
-
-function playAllAudio() {
-  audioTracks.forEach(playAudio);
-}
-
-function pauseAllAudio() {
-  audioTracks.forEach(audio => audio.pause());
-}
-
-function syncAudio(audio) {
-  const drift = audio.currentTime - video.currentTime;
-  const abs = Math.abs(drift);
-  if (abs > 0.3) {
-    // Large drift: hard resync
-    setAudioTime(audio, video.currentTime);
-    audio.playbackRate = 1.0;
-  } else if (abs > 0.05) {
-    // Small drift: nudge playback rate to gently converge (~1% change, inaudible)
-    audio.playbackRate = drift > 0 ? 0.99 : 1.01;
-  } else {
-    audio.playbackRate = 1.0;
-  }
-}
-
-function syncAllAudio() {
-  audioTracks.forEach(syncAudio);
+  audioPlayer.setVolumes([volumes.instrumental, volumes.original]);
 }
 
 video.addEventListener('play', () => {
-  audioTracks.forEach(audio => setAudioTime(audio, video.currentTime));
-  playAllAudio();
+  audioPlayer.play(() => video.currentTime).then(() => {
+    if (video.paused && !document.hidden) audioPlayer.pause();
+  }).catch(showAudioError);
 });
-video.addEventListener('pause', () => { if (!document.hidden) pauseAllAudio(); });
-video.addEventListener('seeked', () => {
-  audioTracks.forEach(audio => setAudioTime(audio, video.currentTime));
+video.addEventListener('pause', () => { if (!document.hidden) audioPlayer.pause(); });
+video.addEventListener('ended', () => audioPlayer.pause());
+video.addEventListener('seeked', () => audioPlayer.seek(video.currentTime));
+video.addEventListener('timeupdate', () => {
+  if (!document.hidden && !video.paused && !video.seeking) audioPlayer.sync(video.currentTime);
 });
-video.addEventListener('timeupdate', syncAllAudio);
 
-// When the tab comes back into focus, the browser may have paused the muted video
-// while audio continued playing — resync video position from audio and resume.
+// The shared audio clock keeps running if a background tab pauses muted video.
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) return;
-  const referenceAudio = audioTracks.find(audio => !audio.paused);
-  if (referenceAudio && video.paused) {
-    video.currentTime = referenceAudio.currentTime;
+  if (audioPlayer.playing && video.paused) {
+    video.currentTime = audioPlayer.currentTime;
     video.play().catch(() => {});
   } else if (!video.paused) {
-    audioTracks.forEach(audio => setAudioTime(audio, video.currentTime));
-    playAllAudio();
+    audioPlayer.sync(video.currentTime);
   }
 });
 
@@ -231,7 +194,6 @@ function setMix(value) {
   vocalMixValue.textContent = `${Math.round(mixAmount * 100)}%`;
   applyMixVolumes();
   updateMixButtons();
-  if (!video.paused) playAllAudio();
 }
 
 btnInstrumental.addEventListener('click', () => setMix(0));

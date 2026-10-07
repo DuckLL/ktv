@@ -3,6 +3,7 @@ from fastapi.responses import FileResponse, JSONResponse
 
 from ktv.config import CACHE_DIR
 from ktv.core.cache import touch
+from ktv.core.audio import AUDIO_MEDIA_TYPES, original_audio_path
 
 router = APIRouter()
 
@@ -25,10 +26,10 @@ async def serve_instrumental(video_id: str):
     return FileResponse(path, media_type="audio/webm")
 
 
-@router.get("/audio/{video_id}/vocals")
-async def serve_vocals(video_id: str):
-    path = CACHE_DIR / video_id / "vocals.webm"
-    if not path.exists():
-        return JSONResponse({"error": "Vocals not found"}, status_code=404)
+@router.get("/audio/{video_id}/original")
+async def serve_original(video_id: str):
+    path = original_audio_path(CACHE_DIR / video_id)
+    if path is None:
+        return JSONResponse({"error": "Original audio not found; reprocess this song"}, status_code=404)
     await touch(video_id)
-    return FileResponse(path, media_type="audio/webm")
+    return FileResponse(path, media_type=AUDIO_MEDIA_TYPES[path.suffix])

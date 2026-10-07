@@ -18,7 +18,7 @@ class FakeYoutubeDL:
     def __call__(self, opts):
         self.calls += 1
         outcome = self.outcomes.pop(0)
-        out = Path(opts["outtmpl"])
+        out = Path(opts["outtmpl"].replace("%(ext)s", "webm"))
         fake = mock.MagicMock()
         fake.__enter__.return_value = fake
 
@@ -70,6 +70,14 @@ class DownloadRetryTests(unittest.TestCase):
 
         self.assertEqual(fake.calls, 1)
         self.assertEqual(self.slept, [])
+
+    def test_native_container_template_cleans_partial_files_on_retry(self):
+        self.opts["outtmpl"] = str(Path(self.tmp.name) / "original.%(ext)s")
+        fake, info = self.run_with([forbidden(), {"format_id": "251"}])
+        self.assertEqual(fake.calls, 2)
+        self.assertEqual(info["format_id"], "251")
+        self.assertFalse((Path(self.tmp.name) / "original.webm.part").exists())
+        self.assertEqual((Path(self.tmp.name) / "original.webm").read_text(), "media")
 
     def test_gives_up_after_the_last_attempt(self):
         fake = FakeYoutubeDL([forbidden() for _ in range(downloader.DOWNLOAD_ATTEMPTS)])
