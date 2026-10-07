@@ -1,4 +1,4 @@
-import { parseLrc, findActiveIndex, getNavigationTime } from '/static/js/lrc.js';
+import { parseLrc, findActiveIndex, getNavigationTime, rankLyricResults } from '/static/js/lrc.js';
 import { SynchronizedAudioPlayer } from '/static/js/audio_player.js';
 import { VideoAudioSync } from '/static/js/video_sync.js';
 import {
@@ -80,7 +80,7 @@ function renderLyrics() {
     const el = document.createElement('div');
     el.className = 'lyric-line';
     el.dataset.idx = i;
-    el.textContent = line.text;
+    el.textContent = line.text || '♪';
     el.addEventListener('click', () => videoSync.seek(Math.max(0, line.time - offsetSeconds)));
     lyricsStage.appendChild(el);
   });
@@ -328,13 +328,13 @@ function renderResults(items) {
     return;
   }
   resultsList.innerHTML = '';
-  items.forEach((item) => {
+  rankLyricResults(items, video.duration).forEach((item) => {
     const el = document.createElement('div');
     el.className = 'result-item' + (String(item.id) === String(selectedLrcId) ? ' selected' : '');
     const hasSynced = !!item.syncedLyrics;
     el.innerHTML = `
       <div class="result-track">${escHtml(item.trackName || '')}</div>
-      <div class="result-artist">${escHtml(item.artistName || '')}</div>
+      <div class="result-artist">${escHtml(item.artistName || '')}${formatDuration(item.duration)}</div>
       <span class="result-badge ${hasSynced ? 'badge-synced' : 'badge-plain'}">
         ${hasSynced ? '同步歌詞' : '純文字'}
       </span>
@@ -434,6 +434,12 @@ async function init() {
 }
 
 init();
+
+function formatDuration(seconds) {
+  if (!Number.isFinite(seconds)) return '';
+  const total = Math.round(seconds);
+  return ` · ${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}`;
+}
 
 function escHtml(str) {
   return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');

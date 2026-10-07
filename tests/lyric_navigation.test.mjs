@@ -46,3 +46,11 @@ test('offsets cannot seek before the beginning or beyond the video duration', ()
   assert.equal(getNavigationTime(lines, 15, 1, -10, 24), 22);
   assert.equal(getNavigationTime(lines, 23, 1, -10, 24), 24);
 });
+
+test('instrumental breaks are skipped; previous during a break returns to the line just sung', () => {
+  const withBreak = [{ time: 5, text: 'A' }, { time: 12, text: 'B' }, { time: 20, text: '' }, { time: 32, text: 'C' }];
+  assert.equal(getNavigationTime(withBreak, 14, 1), 32);
+  assert.equal(getNavigationTime(withBreak, 25, 1), 32);
+  assert.equal(getNavigationTime(withBreak, 25, -1), 12);
+  assert.equal(getNavigationTime(withBreak, 33, -1), 12);
+});
