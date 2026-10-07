@@ -35,15 +35,26 @@ app.include_router(library_router, prefix="/api")
 app.include_router(selection_router, prefix="/api")
 
 STATIC_DIR = Path(__file__).parent / "static"
+# Revalidate pages and modules with their ETag on every load, so a deploy never
+# leaves a browser running a stale mix of old and new JavaScript.
+NO_CACHE = {"Cache-Control": "no-cache"}
 
-app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+
+class RevalidatedStaticFiles(StaticFiles):
+    async def get_response(self, path, scope):
+        response = await super().get_response(path, scope)
+        response.headers.update(NO_CACHE)
+        return response
+
+
+app.mount("/static", RevalidatedStaticFiles(directory=STATIC_DIR), name="static")
 
 
 @app.get("/")
 async def index():
-    return FileResponse(STATIC_DIR / "index.html")
+    return FileResponse(STATIC_DIR / "index.html", headers=NO_CACHE)
 
 
 @app.get("/player")
 async def player():
-    return FileResponse(STATIC_DIR / "player.html")
+    return FileResponse(STATIC_DIR / "player.html", headers=NO_CACHE)
