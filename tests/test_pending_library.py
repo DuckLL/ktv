@@ -64,6 +64,51 @@ class PendingLibraryTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(rows[0]["artist"], "Final Artist")
         self.assertEqual(rows[0]["processed_at"], 456)
 
+    async def test_failed_video_keeps_its_error_until_it_is_queued_again(self):
+        await db_module.upsert_pending_video("abc123")
+        await db_module.mark_video_failed("abc123", "HTTP Error 403")
+
+        rows = await db_module.get_all_videos()
+        self.assertEqual(rows[0]["error"], "HTTP Error 403")
+        self.assertEqual(rows[0]["processed_at"], 0)
+
+        await db_module.upsert_pending_video("abc123")
+        rows = await db_module.get_all_videos()
+        self.assertIsNone(rows[0]["error"])
+
+    async def test_failure_never_marks_a_finished_video(self):
+        await db_module.upsert_video({"video_id": "done123"}, 100)
+        await db_module.mark_video_failed("done123", "late error")
+
+        rows = await db_module.get_all_videos()
+        self.assertIsNone(rows[0]["error"])
+
+    async def test_restart_marks_unfinished_videos_as_interrupted(self):
+        await db_module.upsert_pending_video("pending123")
+        await db_module.upsert_pending_video("failed123")
+        await db_module.mark_video_failed("failed123", "HTTP Error 403")
+        await db_module.upsert_video({"video_id": "done123"}, 100)
+
+        await db_module.mark_interrupted_videos("interrupted")
+
+        errors = {row["video_id"]: row["error"] for row in await db_module.get_all_videos()}
+        self.assertEqual(errors, {"pending123": "interrupted", "failed123": "HTTP Error 403", "done123": None})
+
+    async def test_existing_databases_gain_the_error_column(self):
+        import aiosqlite
+
+        legacy = Path(self.tmp.name) / "legacy.db"
+        async with aiosqlite.connect(legacy) as db:
+            await db.execute("CREATE TABLE videos (video_id TEXT PRIMARY KEY, title TEXT, artist TEXT, "
+                             "duration INTEGER, thumbnail TEXT, processed_at INTEGER)")
+            await db.execute("INSERT INTO videos VALUES ('old123', 'Old', 'Artist', 1, '', 5)")
+            await db.commit()
+        db_module.DB_PATH = legacy
+        await db_module.init_db()
+
+        rows = await db_module.get_all_videos()
+        self.assertIsNone(rows[0]["error"])
+
 
 if __name__ == "__main__":
     unittest.main()

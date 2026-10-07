@@ -78,6 +78,18 @@ class ProcessBackgroundTests(unittest.IsolatedAsyncioTestCase):
             "processed_at": 0,
         })
 
+    async def test_status_reports_a_failed_library_row_as_an_error(self):
+        async def fake_get_all_videos():
+            return [{"video_id": "abc123", "processed_at": 0, "error": "HTTP Error 403"}]
+
+        with mock.patch.object(process_module, "separated_audio_ready", lambda _video_id: False), \
+             mock.patch.object(process_module, "get_all_videos", fake_get_all_videos), \
+             mock.patch.object(process_module, "_jobs", {}):
+            resp = await process_module.status("abc123")
+
+        self.assertEqual(resp["status"], "error")
+        self.assertEqual(resp["msg"], "HTTP Error 403")
+
 
 class BackgroundJobTests(unittest.IsolatedAsyncioTestCase):
     def patch_pipeline(self, separate):
@@ -85,11 +97,17 @@ class BackgroundJobTests(unittest.IsolatedAsyncioTestCase):
             video_id = url.rsplit("/", 1)[-1]
             return video_id, {"video_id": video_id}
 
+        self.failed = []
+
+        async def mark_failed(video_id, error):
+            self.failed.append((video_id, error))
+
         patches = [
             mock.patch.object(process_module, "download_video", download),
             mock.patch.object(process_module, "separate_vocals", separate),
             mock.patch.object(process_module, "upsert_pending_video", mock.AsyncMock()),
             mock.patch.object(process_module, "upsert_video", mock.AsyncMock()),
+            mock.patch.object(process_module, "mark_video_failed", mark_failed),
             mock.patch.object(process_module, "_jobs", {}),
             mock.patch.object(process_module, "_separation_slot", asyncio.Semaphore(1)),
         ]
@@ -125,6 +143,17 @@ class BackgroundJobTests(unittest.IsolatedAsyncioTestCase):
         await asyncio.gather(*jobs)
         self.assertEqual(peak, 1)
         self.assertEqual([process_module._jobs[v]["status"] for v in ("song1", "song2")], ["done", "done"])
+
+    async def test_failure_is_recorded_in_the_library(self):
+        async def separate(video_id, progress):
+            raise RuntimeError("demucs exited with code -9")
+
+        self.patch_pipeline(separate)
+        process_module._jobs["song1"] = {"status": "queued"}
+        await process_module._run_background_process("https://youtu.be/song1", "song1")
+
+        self.assertEqual(process_module._jobs["song1"]["status"], "error")
+        self.assertEqual(self.failed, [("song1", "demucs exited with code -9")])
 
 
 if __name__ == "__main__":

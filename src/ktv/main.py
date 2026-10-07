@@ -6,7 +6,7 @@ from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 
-from ktv.core.db import init_db
+from ktv.core.db import init_db, mark_interrupted_videos
 from ktv.core.cache import evict_forever
 from ktv.api.process import router as process_router, active_video_ids
 from ktv.api.lyrics import router as lyrics_router
@@ -19,6 +19,7 @@ from ktv.api.selection import router as selection_router
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await init_db()
+    await mark_interrupted_videos("伺服器重新啟動，處理中斷")
     evictor = asyncio.create_task(evict_forever(active_video_ids))
     yield
     evictor.cancel()

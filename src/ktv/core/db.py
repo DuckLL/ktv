@@ -33,11 +33,13 @@ CREATE TABLE IF NOT EXISTS selections (
 async def init_db():
     async with aiosqlite.connect(DB_PATH) as db:
         await db.executescript(DDL)
-        # Databases created before cache eviction lack last_accessed; add it in place.
+        # Older databases lack these columns; add them in place.
         async with db.execute("PRAGMA table_info(videos)") as cur:
             columns = {row[1] for row in await cur.fetchall()}
         if "last_accessed" not in columns:
             await db.execute("ALTER TABLE videos ADD COLUMN last_accessed INTEGER")
+        if "error" not in columns:
+            await db.execute("ALTER TABLE videos ADD COLUMN error TEXT")
         await db.commit()
 
 
@@ -69,6 +71,24 @@ async def upsert_pending_video(video_id: str, meta: dict | None = None):
                 meta.get("duration"),
                 meta.get("thumbnail"),
             ),
+        )
+        await db.commit()
+
+
+async def mark_video_failed(video_id: str, error: str):
+    """Keep a failed song in the library so it can be retried, not shown as processing."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            "UPDATE videos SET error=? WHERE video_id=? AND processed_at=0", (error, video_id)
+        )
+        await db.commit()
+
+
+async def mark_interrupted_videos(error: str):
+    """Jobs live in memory, so songs still processing at startup were cut off by a restart."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            "UPDATE videos SET error=? WHERE processed_at=0 AND error IS NULL", (error,)
         )
         await db.commit()
 

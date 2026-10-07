@@ -8,7 +8,7 @@ from pydantic import BaseModel
 from ktv.config import CACHE_DIR
 from ktv.core.downloader import download_video, _extract_video_id
 from ktv.core.separator import separate_vocals, separated_audio_ready
-from ktv.core.db import upsert_pending_video, upsert_video, get_all_videos
+from ktv.core.db import upsert_pending_video, upsert_video, get_all_videos, mark_video_failed
 from ktv.core.cache import touch
 
 router = APIRouter()
@@ -16,7 +16,6 @@ router = APIRouter()
 _jobs: dict[str, dict] = {}
 # Demucs takes several GB of RAM and every core; separate one song at a time.
 _separation_slot = asyncio.Semaphore(1)
-
 
 
 def active_video_ids() -> set[str]:
@@ -68,6 +67,8 @@ async def status(video_id: str):
         return job
     meta = await _get_video_meta(video_id)
     if meta and meta.get("processed_at") == 0:
+        if meta.get("error"):
+            return {**meta, "status": "error", "pct": 0, "msg": meta["error"]}
         return {"status": "queued", **meta}
     return JSONResponse({"error": "not found"}, status_code=404)
 
@@ -108,6 +109,7 @@ async def _run_background_process(url: str, video_id: str):
             "msg": str(exc),
             "video_id": video_id,
         }
+        await mark_video_failed(video_id, str(exc))
 
 
 async def _get_video_meta(video_id: str) -> dict | None:

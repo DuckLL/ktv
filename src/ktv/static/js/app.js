@@ -11,14 +11,6 @@ const libraryWrap = document.getElementById('libraryWrap');
 const libraryGrid = document.getElementById('libraryGrid');
 const librarySearch = document.getElementById('librarySearch');
 
-const STAGE_LABELS = {
-  downloading: '下載影片中…',
-  separating: '分離人聲中（CPU 模式，請耐心等候）…',
-  muxing: '合成影片中…',
-  done: '完成，可以播放',
-  error: '發生錯誤',
-};
-
 // ── Library ───────────────────────────────────────────
 let allLibrary = [];
 let libraryPollTimer = null;
@@ -44,7 +36,8 @@ function renderLibrary(items) {
   items.forEach((item) => {
     const state = getLibraryCardState(item);
     const card = document.createElement('div');
-    card.className = `library-card${state.pending ? ' is-pending' : ''}`;
+    card.className = `library-card${state.pending ? ' is-pending' : ''}${state.failed ? ' is-failed' : ''}`;
+    if (state.failed) card.title = item.error;
     card.innerHTML = `
       <div class="library-card-title">${escHtml(item.title || item.video_id)}</div>
       <div class="library-card-meta">
@@ -59,6 +52,10 @@ function renderLibrary(items) {
 
 async function handleLibraryCardClick(item) {
   const state = getLibraryCardState(item);
+  if (state.failed) {
+    await submitUrl(`https://www.youtube.com/watch?v=${item.video_id}`);
+    return;
+  }
   if (!state.pending) {
     goToPlayer(item);
     return;
@@ -75,6 +72,11 @@ async function handleLibraryCardClick(item) {
     if (status.status === 'done') {
       await loadLibrary();
       goToPlayer(status);
+      return;
+    }
+    if (status.status === 'error') {
+      setProgress(0, `錯誤：${status.msg}`);
+      await loadLibrary();
       return;
     }
     setProgress(status.pct ?? 0, status.msg || '這首還在背景處理中，可以先播放其他歌。');
@@ -112,8 +114,10 @@ librarySearch.addEventListener('input', () => {
 form.addEventListener('submit', async (e) => {
   e.preventDefault();
   const url = urlInput.value.trim();
-  if (!url) return;
+  if (url && await submitUrl(url)) urlInput.value = '';
+});
 
+async function submitUrl(url) {
   submitBtn.disabled = true;
   progressWrap.style.display = 'block';
   setProgress(5, '送入背景處理…');
@@ -131,35 +135,16 @@ form.addEventListener('submit', async (e) => {
     }
 
     const evt = await resp.json();
-    handleEvent(evt);
-    urlInput.value = '';
+    if (evt.status === 'done') setProgress(100, '這首已經處理完成，可以播放。');
+    else setProgress(evt.pct ?? 10, '已送入背景處理，可以先點其他歌。');
     submitBtn.disabled = false;
     await loadLibrary();
+    return true;
   } catch (err) {
     setProgress(0, `錯誤：${err.message}`);
     submitBtn.disabled = false;
+    return false;
   }
-});
-
-function handleEvent(evt) {
-  if (evt.stage === 'done') {
-    setProgress(100, STAGE_LABELS.done);
-    return;
-  }
-  if (evt.status === 'done') {
-    setProgress(100, '這首已經處理完成，可以播放。');
-    return;
-  }
-  if (evt.status === 'queued' || evt.status === 'processing') {
-    setProgress(evt.pct ?? 10, '已送入背景處理，可以先點其他歌。');
-    return;
-  }
-  if (evt.stage === 'error') {
-    setProgress(0, `錯誤：${evt.msg}`);
-    submitBtn.disabled = false;
-    return;
-  }
-  setProgress(evt.pct ?? 0, evt.msg || STAGE_LABELS[evt.stage] || evt.stage);
 }
 
 function setProgress(pct, label) {
