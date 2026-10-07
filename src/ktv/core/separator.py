@@ -1,4 +1,5 @@
 import asyncio
+import codecs
 import json
 import re
 import shutil
@@ -29,6 +30,31 @@ def separated_audio_ready(video_id: str) -> bool:
         return profile == SEPARATION_PROFILE
     except (OSError, ValueError):
         return False
+
+
+async def relay_progress(stream: asyncio.StreamReader, progress_cb, tail: deque) -> None:
+    """Report demucs' tqdm percentages as they happen; tqdm redraws with \\r, not \\n."""
+    decoder = codecs.getincrementaldecoder("utf-8")(errors="replace")
+    last_pct = None
+
+    async def handle(line: str) -> None:
+        nonlocal last_pct
+        text = line.strip()
+        if not text:
+            return
+        tail.append(text)
+        m = re.search(r"(\d+)%", text)
+        if m and progress_cb and m.group(1) != last_pct:
+            last_pct = m.group(1)
+            raw = int(last_pct)
+            await progress_cb(30 + int(raw * 0.55), f"Separating vocals… {raw}%")
+
+    pending = ""
+    while chunk := await stream.read(4096):
+        *lines, pending = re.split(r"[\r\n]", pending + decoder.decode(chunk))
+        for line in lines:
+            await handle(line)
+    await handle(pending + decoder.decode(b"", final=True))
 
 
 def cleanup_separation_sources(video_id: str) -> None:
@@ -84,19 +110,7 @@ async def separate_vocals(video_id: str, progress_cb=None) -> Path:
     )
 
     stderr_lines = deque(maxlen=20)
-
-    async def _read_stderr():
-        async for line in proc.stderr:
-            text = line.decode(errors="replace").strip()
-            if text:
-                stderr_lines.append(text)
-            m = re.search(r"(\d+)%", text)
-            if m and progress_cb:
-                raw = int(m.group(1))
-                pct = 30 + int(raw * 0.55)
-                await progress_cb(pct, f"Separating vocals… {raw}%")
-
-    await asyncio.gather(_read_stderr(), proc.wait())
+    await asyncio.gather(relay_progress(proc.stderr, progress_cb, stderr_lines), proc.wait())
 
     if proc.returncode != 0:
         tail = "\n".join(list(stderr_lines)[-10:])

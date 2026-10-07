@@ -14,6 +14,9 @@ from ktv.core.cache import touch
 router = APIRouter()
 
 _jobs: dict[str, dict] = {}
+# Demucs takes several GB of RAM and every core; separate one song at a time.
+_separation_slot = asyncio.Semaphore(1)
+
 
 
 def active_video_ids() -> set[str]:
@@ -84,7 +87,10 @@ async def _run_background_process(url: str, video_id: str):
         video_id_out, meta = await download_video(url, progress)
         await upsert_pending_video(video_id_out, meta)
 
-        no_vocals = await separate_vocals(video_id_out, progress)
+        if _separation_slot.locked():
+            await progress(29, "排隊中，等待前一首歌分離完成…")
+        async with _separation_slot:
+            no_vocals = await separate_vocals(video_id_out, progress)
         await progress(98, "Done!")
 
         processed_at = int(no_vocals.stat().st_mtime)

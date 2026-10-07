@@ -1,5 +1,7 @@
+import asyncio
 import json
 import unittest
+from unittest import mock
 
 from fastapi.responses import JSONResponse
 
@@ -75,6 +77,54 @@ class ProcessBackgroundTests(unittest.IsolatedAsyncioTestCase):
             "artist": "處理中",
             "processed_at": 0,
         })
+
+
+class BackgroundJobTests(unittest.IsolatedAsyncioTestCase):
+    def patch_pipeline(self, separate):
+        async def download(url, progress):
+            video_id = url.rsplit("/", 1)[-1]
+            return video_id, {"video_id": video_id}
+
+        patches = [
+            mock.patch.object(process_module, "download_video", download),
+            mock.patch.object(process_module, "separate_vocals", separate),
+            mock.patch.object(process_module, "upsert_pending_video", mock.AsyncMock()),
+            mock.patch.object(process_module, "upsert_video", mock.AsyncMock()),
+            mock.patch.object(process_module, "_jobs", {}),
+            mock.patch.object(process_module, "_separation_slot", asyncio.Semaphore(1)),
+        ]
+        for patch in patches:
+            patch.start()
+            self.addCleanup(patch.stop)
+
+    async def test_only_one_song_separates_at_a_time(self):
+        running, peak = 0, 0
+        release = asyncio.Event()
+
+        async def separate(video_id, progress):
+            nonlocal running, peak
+            running += 1
+            peak = max(peak, running)
+            await release.wait()
+            running -= 1
+            path = mock.MagicMock()
+            path.stat.return_value.st_mtime = 100
+            return path
+
+        self.patch_pipeline(separate)
+        for video_id in ("song1", "song2"):
+            process_module._jobs[video_id] = {"status": "queued"}
+        jobs = [asyncio.create_task(process_module._run_background_process(f"https://youtu.be/{video_id}", video_id))
+                for video_id in ("song1", "song2")]
+        await asyncio.sleep(0)
+        await asyncio.sleep(0)
+
+        self.assertEqual(peak, 1)
+        self.assertIn("排隊", process_module._jobs["song2"]["msg"])
+        release.set()
+        await asyncio.gather(*jobs)
+        self.assertEqual(peak, 1)
+        self.assertEqual([process_module._jobs[v]["status"] for v in ("song1", "song2")], ["done", "done"])
 
 
 if __name__ == "__main__":
