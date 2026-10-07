@@ -29,6 +29,13 @@ uv run uvicorn ktv.main:app --reload
 
 開啟 http://localhost:8000
 
+測試（GitHub Actions 也會在 push 與 PR 時執行）：
+
+```bash
+uv run pytest
+node --test tests/*.mjs
+```
+
 ### Docker
 
 ```bash
@@ -67,7 +74,7 @@ docker compose up -d
 
 ## 快取自動清理
 
-處理過的歌（影片、分離後的伴唱與人聲）很佔空間，而且隨時能重新處理，所以**超過 7 天沒播放的歌會被自動刪除**：
+處理過的歌（影片、原唱與分離後的伴唱）很佔空間，而且隨時能重新處理，所以**超過 7 天沒播放的歌會被自動刪除**：
 
 - 播放器讀取影片或音軌、或重新送出已處理過的網址，都算一次存取（同一首歌一小時內只記一次）。從沒播放過的歌從處理完成的時間起算。
 - 啟動時清一次，之後每 6 小時一次。刪除的是 `cache/{video_id}/` 與影片庫的那一筆；**歌詞版本選擇與時間差會保留**，重新處理同一首歌就會套用回來。
@@ -108,5 +115,5 @@ cache/{video_id}/
 | 歌詞 | lrclib.net API |
 | 資料庫 | SQLite (aiosqlite) |
 | 前端 | 原生 HTML / CSS / JS（無框架） |
-| 進度推送 | SSE (Server-Sent Events) |
+| 進度回報 | 前端輪詢 |
 | 容器 | Docker + docker compose |
