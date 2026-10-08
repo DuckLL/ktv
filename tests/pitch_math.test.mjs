@@ -1,0 +1,20 @@
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import { captureSongTime, hzToMidi, pitchDifferenceCents, pitchFeedback, referenceAt } from '../src/ktv/static/js/pitch_math.js';
+
+test('pitch comparison uses cents and masks sparse reference frames', () => {
+  assert.equal(hzToMidi(440), 69);
+  assert.equal(pitchDifferenceCents(hzToMidi(466.1637615), 69), 100);
+  assert.equal(pitchFeedback(35).className, 'close');
+  assert.equal(pitchFeedback(-85).label, '偏低 85 音分');
+  const reference = { hop_seconds: 0.016, midi: [null, 69, 69.1, 69, null, null, null] };
+  assert.equal(referenceAt(reference, 0.032), 69);
+  assert.equal(referenceAt(reference, 2), null);
+  assert.equal(referenceAt(reference, -1), null);
+});
+
+test('sample centre maps to the audio clock and applies input delay', () => {
+  const audio = { offset: 32, startedAt: 10 };
+  assert.equal(captureSongTime(audio, 11.5, 48000, 4800, 0), 33.45);
+  assert.equal(captureSongTime(audio, 11.5, 48000, 4800, 200), 33.25);
+});

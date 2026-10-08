@@ -1,6 +1,7 @@
 import { parseLrc, findActiveIndex, getNavigationTime, rankLyricResults } from '/static/js/lrc.js';
 import { SynchronizedAudioPlayer } from '/static/js/audio_player.js';
 import { VideoAudioSync } from '/static/js/video_sync.js';
+import { PitchFeedback } from '/static/js/pitch_feedback.js';
 import {
   calculateMixVolumes,
   formatVolumePercent,
@@ -172,6 +173,8 @@ const audioPlayer = new SynchronizedAudioPlayer([
   `/api/audio/${videoId}/original`,
 ]);
 const videoSync = new VideoAudioSync(video, audioPlayer);
+const pitchFeedback = new PitchFeedback(audioPlayer, videoId);
+pitchFeedback.loadReference();
 const audioStatus = document.getElementById('audioStatus');
 function showAudioError() {
   audioStatus.textContent = '音訊載入失敗，請在首頁重新處理這首歌';

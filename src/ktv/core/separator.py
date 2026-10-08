@@ -10,7 +10,7 @@ from pathlib import Path
 from ktv.config import CACHE_DIR
 from ktv.core.audio import original_audio_path
 
-SEPARATION_PROFILE = {"backend": "demucs", "model": "htdemucs", "pipeline_version": 2}
+SEPARATION_PROFILE = {"backend": "demucs", "model": "htdemucs", "pipeline_version": 3}
 
 
 def separated_audio_paths(video_id: str) -> dict[str, Path | None]:
@@ -24,6 +24,9 @@ def separated_audio_paths(video_id: str) -> dict[str, Path | None]:
 def separated_audio_ready(video_id: str) -> bool:
     paths = separated_audio_paths(video_id)
     if not all(path and path.is_file() and path.stat().st_size for path in paths.values()):
+        return False
+    pitch_path = CACHE_DIR / video_id / "pitch.json"
+    if not pitch_path.is_file() or not pitch_path.stat().st_size:
         return False
     try:
         profile = json.loads((CACHE_DIR / video_id / "separation.json").read_text())
@@ -101,6 +104,7 @@ async def separate_vocals(video_id: str, progress_cb=None) -> Path:
         sys.executable, "-m", "ktv.core.demucs_worker",
         str(wav_path),
         str(job_dir / "htdemucs" / "audio" / "no_vocals.wav"),
+        str(job_dir / "pitch.tmp.json"),
     ]
 
     proc = await asyncio.create_subprocess_exec(
@@ -120,6 +124,9 @@ async def separate_vocals(video_id: str, progress_cb=None) -> Path:
     demucs_no_vocals = job_dir / "htdemucs" / "audio" / "no_vocals.wav"
     if not demucs_no_vocals.exists():
         raise RuntimeError(f"Expected demucs output not found: {demucs_no_vocals}")
+    temporary_pitch = job_dir / "pitch.tmp.json"
+    if not temporary_pitch.exists():
+        raise RuntimeError("Expected pitch data not found")
 
     if progress_cb:
         await progress_cb(87, "Saving accompaniment; preserving original audio…")
@@ -151,6 +158,7 @@ async def separate_vocals(video_id: str, progress_cb=None) -> Path:
     if conv.returncode != 0:
         raise RuntimeError("ffmpeg accompaniment conversion failed")
     temporary_output.replace(instrumental_dest_path)
+    temporary_pitch.replace(job_dir / "pitch.json")
     temporary_profile = job_dir / "separation.json.tmp"
     temporary_profile.write_text(json.dumps(SEPARATION_PROFILE))
     temporary_profile.replace(job_dir / "separation.json")

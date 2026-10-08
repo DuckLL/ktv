@@ -33,3 +33,12 @@ async def serve_original(video_id: str):
         return JSONResponse({"error": "Original audio not found; reprocess this song"}, status_code=404)
     await touch(video_id)
     return FileResponse(path, media_type=AUDIO_MEDIA_TYPES[path.suffix])
+
+
+@router.get("/pitch/{video_id}")
+async def serve_pitch(video_id: str):
+    path = CACHE_DIR / video_id / "pitch.json"
+    if not path.exists():
+        return JSONResponse({"error": "Pitch data not found; reprocess this song"}, status_code=404)
+    await touch(video_id)
+    return FileResponse(path, media_type="application/json")

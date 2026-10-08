@@ -5,6 +5,7 @@ YouTube 卡拉 OK 播放器。貼上 YouTube 網址，自動下載影片、分�
 ## 功能
 
 - **人聲分離**：使用 [demucs](https://github.com/facebookresearch/demucs) (htdemucs) 分離伴唱與人聲
+- **音準練習**：分離時用 SwiftF0 預算原唱音高；播放頁展開「音準練習」、開啟麥克風後，顯示原唱與自己的即時音高曲線和接近比例
 - **伴唱 / 原唱混音**：保留下載音源，播放時平順加入原唱導唱；兩軌共用音訊時鐘，伴奏總增益維持固定。起播只等伴唱，原唱緊接著在背景預先載入
 - **同步歌詞**：從 [lrclib.net](https://lrclib.net) 搜尋，搜尋結果把同步歌詞與長度最接近影片的版本排在前面；LRC 逐句同步，間奏以 ♪ 顯示（逐字時間標記會略過）
 - **歌詞時間差調整**：可微調歌詞與音樂的偏移量，設定自動儲存
@@ -71,6 +72,9 @@ docker compose up -d
 3. 進入播放頁後，在右側搜尋欄輸入關鍵字搜尋歌詞
 4. 選擇正確的歌詞版本，播放時會自動同步
 5. 若歌詞有時間差，用 offset bar 或 `[` `]` 鍵調整，設定會自動儲存
+6. 想練音準時，戴耳機、展開「音準練習」、開啟麥克風；若兩條線的時間明顯錯開，可調「收音延遲校正」。麥克風音訊只在瀏覽器內分析，不會上傳或儲存
+
+麥克風需要瀏覽器允許，且網頁必須透過 `localhost` 或 HTTPS 開啟；用手機連到區網 HTTP 位址時無法開啟。原唱有和聲、合唱或分離殘留時，音高參考可能不準，畫面會略過辨識不清的片段。更新前已處理的歌曲須從首頁重新送出網址，才能產生音高資料。
 
 ## 快取自動清理
 
@@ -90,6 +94,7 @@ cache/{video_id}/
   video_only.webm  # 純影片（無音軌）
   original.webm   # 未重新編碼的原唱（依來源也可能是 original.m4a 等）
   no_vocals.webm  # 伴唱音訊，Opus 256 kbps
+  pitch.json      # 原唱人聲的音高曲線（16 ms 一格；沒有可靠音高時為 null）
   separation.json # 分離工具與版本，用於判斷快取是否需要重建
   meta.json        # 標題、歌手等元資料
 ```
@@ -111,6 +116,8 @@ cache/{video_id}/
 | 後端 | Python / FastAPI / uv |
 | 下載 | yt-dlp |
 | 人聲分離 | demucs (htdemucs, CPU) |
+| 原唱音高 | SwiftF0（處理歌曲時） |
+| 即時音高 | Pitchy + AudioWorklet（瀏覽器內） |
 | 音訊合併 | ffmpeg |
 | 歌詞 | lrclib.net API |
 | 資料庫 | SQLite (aiosqlite) |

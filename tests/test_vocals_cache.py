@@ -7,7 +7,7 @@ import ktv.core.separator as separator
 
 
 class SeparatedAudioCacheTests(unittest.TestCase):
-    def test_cache_requires_source_accompaniment_and_current_profile(self):
+    def test_cache_requires_source_accompaniment_pitch_and_current_profile(self):
         original_cache_dir = separator.CACHE_DIR
         try:
             with tempfile.TemporaryDirectory() as tmp:
@@ -23,6 +23,8 @@ class SeparatedAudioCacheTests(unittest.TestCase):
                 (job_dir / "original.m4a").write_bytes(b"original")
                 self.assertFalse(separator.separated_audio_ready("abc123"))
                 (job_dir / "separation.json").write_text(json.dumps(separator.SEPARATION_PROFILE))
+                self.assertFalse(separator.separated_audio_ready("abc123"))
+                (job_dir / "pitch.json").write_text('{"version":1,"hop_seconds":0.016,"midi":[]}')
                 self.assertTrue(separator.separated_audio_ready("abc123"))
                 (job_dir / "separation.json").write_text(json.dumps({"backend": "old-model"}))
                 self.assertFalse(separator.separated_audio_ready("abc123"))
