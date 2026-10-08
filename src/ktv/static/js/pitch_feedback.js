@@ -1,9 +1,9 @@
 import { PitchDetector } from '/static/vendor/pitchy/pitchy.js';
-import { captureSongTime, hzToMidi, pitchDifferenceCents, pitchFeedback, referenceAt } from '/static/js/pitch_math.js';
+import { captureSongTime, hzToMidi, midiToNote, pitchChartRange, pitchDifferenceCents, pitchFeedback, referenceAt } from '/static/js/pitch_math.js';
 
 const WINDOW_SIZE = 4096;
 const PAST_SECONDS = 4;
-const FUTURE_SECONDS = 2;
+const FUTURE_SECONDS = 8;
 
 export class PitchFeedback {
   constructor(audio, videoId) {
@@ -16,6 +16,8 @@ export class PitchFeedback {
     this.delay = document.getElementById('pitchDelaySlider');
     this.delayValue = document.getElementById('pitchDelayValue');
     this.canvas = document.getElementById('pitchCanvas');
+    this.targetNote = document.getElementById('pitchTargetNote');
+    this.sungNote = document.getElementById('pitchSungNote');
     this.ctx = this.canvas.getContext('2d');
     this.detector = PitchDetector.forFloat32Array(WINDOW_SIZE);
     this.window = new Float32Array(WINDOW_SIZE);
@@ -24,7 +26,7 @@ export class PitchFeedback {
     this.compared = 0;
     this.close = 0;
     this.lastStartedAt = null;
-    this.centerMidi = 69;
+    this.chartRange = { min: 57, max: 81 };
     this.reference = null;
     this.stream = null;
     this.source = null;
@@ -53,6 +55,7 @@ export class PitchFeedback {
         throw new Error('invalid');
       }
       this.reference = reference;
+      this.chartRange = pitchChartRange(reference.midi);
       this.button.disabled = false;
       this.status.textContent = '戴耳機後開啟麥克風，就能跟原唱音高對照。';
     } catch (_) {
@@ -108,6 +111,7 @@ export class PitchFeedback {
     this.stream = null;
     this.samplesSeen = 0;
     this.button.textContent = '開啟麥克風';
+    this.sungNote.textContent = '—';
     this.status.dataset.grade = '';
     if (this.reference) this.status.textContent = '麥克風已關閉。';
   }
@@ -150,6 +154,7 @@ export class PitchFeedback {
       ? this.detector.findPitch(this.window, this.audio.context.sampleRate)
       : [0, 0];
     const sungMidi = clarity >= 0.8 && hz >= 65 && hz <= 1200 ? hzToMidi(hz) : null;
+    this.sungNote.textContent = midiToNote(sungMidi);
     const targetMidi = referenceAt(this.reference, songTime);
     const cents = sungMidi !== null && targetMidi !== null
       ? pitchDifferenceCents(sungMidi, targetMidi) : null;
@@ -188,27 +193,47 @@ export class PitchFeedback {
     ctx.clearRect(0, 0, width, height);
     const now = this.audio.currentTime;
     const target = referenceAt(this.reference, now) ?? referenceAt(this.reference, now + 0.2);
-    if (target !== null) this.centerMidi = Math.round(target);
-    const recent = this.history.at(-1)?.midi;
-    const range = Math.max(6, Math.min(16, Math.abs((recent ?? this.centerMidi) - this.centerMidi) + 2));
+    const targetLabel = midiToNote(target);
+    if (this.targetNote.textContent !== targetLabel) this.targetNote.textContent = targetLabel;
+    if (!this.audio.playing && this.sungNote.textContent !== '—') this.sungNote.textContent = '—';
     const start = now - PAST_SECONDS;
-    const x = t => (t - start) / (PAST_SECONDS + FUTURE_SECONDS) * width;
-    const y = midi => height / 2 - (midi - this.centerMidi) / range * height / 2;
+    const plotLeft = 42;
+    const plotWidth = width - plotLeft - 8;
+    const x = t => plotLeft + (t - start) / (PAST_SECONDS + FUTURE_SECONDS) * plotWidth;
+    const y = midi => (this.chartRange.max - midi) / (this.chartRange.max - this.chartRange.min) * height;
 
     ctx.lineWidth = 1;
     ctx.strokeStyle = '#303046';
-    for (let note = Math.ceil(this.centerMidi - range); note <= this.centerMidi + range; note += 2) {
+    ctx.font = '11px system-ui, sans-serif';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    for (let note = Math.ceil(this.chartRange.min); note <= this.chartRange.max; note++) {
+      if (![0, 4, 7, 11].includes(((note % 12) + 12) % 12)) continue;
       const py = y(note);
       ctx.beginPath();
-      ctx.moveTo(0, py);
+      ctx.moveTo(plotLeft, py);
       ctx.lineTo(width, py);
       ctx.stroke();
+      if (py >= 10 && py <= height - 10) {
+        ctx.fillStyle = '#a8a8be';
+        ctx.fillText(midiToNote(note), 7, py);
+      }
     }
+    ctx.strokeStyle = '#48485f';
+    ctx.beginPath();
+    ctx.moveTo(plotLeft, 0);
+    ctx.lineTo(plotLeft, height);
+    ctx.stroke();
     ctx.strokeStyle = '#6a6a80';
     ctx.beginPath();
     ctx.moveTo(x(now), 0);
     ctx.lineTo(x(now), height);
     ctx.stroke();
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(plotLeft, 0, width - plotLeft, height);
+    ctx.clip();
 
     const first = Math.max(0, Math.floor(start / this.reference.hop_seconds));
     const last = Math.min(this.reference.midi.length - 1, Math.ceil((now + FUTURE_SECONDS) / this.reference.hop_seconds));
@@ -236,5 +261,6 @@ export class PitchFeedback {
       connected = true;
     }
     ctx.stroke();
+    ctx.restore();
   }
 }

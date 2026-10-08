@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { captureSongTime, hzToMidi, pitchDifferenceCents, pitchFeedback, referenceAt } from '../src/ktv/static/js/pitch_math.js';
+import { captureSongTime, hzToMidi, midiToNote, pitchChartRange, pitchDifferenceCents, pitchFeedback, referenceAt } from '../src/ktv/static/js/pitch_math.js';
 
 test('pitch comparison uses cents and masks sparse reference frames', () => {
   assert.equal(hzToMidi(440), 69);
@@ -17,4 +17,14 @@ test('sample centre maps to the audio clock and applies input delay', () => {
   const audio = { offset: 32, startedAt: 10 };
   assert.equal(captureSongTime(audio, 11.5, 48000, 4800, 0), 33.45);
   assert.equal(captureSongTime(audio, 11.5, 48000, 4800, 200), 33.25);
+});
+
+test('chart stays at one readable note scale despite pitch tracking outliers', () => {
+  const range = pitchChartRange([40, ...Array(100).fill(60), ...Array(100).fill(72), 100]);
+  assert.ok(range.min <= 60 && range.max >= 72);
+  assert.ok(range.max - range.min >= 24);
+  assert.ok(range.max - range.min <= 38);
+  assert.equal(midiToNote(69), 'A4');
+  assert.equal(midiToNote(61), 'C♯4');
+  assert.equal(midiToNote(null), '—');
 });

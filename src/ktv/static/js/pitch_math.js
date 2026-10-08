@@ -2,6 +2,24 @@ export function hzToMidi(hz) {
   return hz > 0 && Number.isFinite(hz) ? 69 + 12 * Math.log2(hz / 440) : null;
 }
 
+export function midiToNote(midi) {
+  if (!Number.isFinite(midi)) return '—';
+  const rounded = Math.round(midi);
+  const names = ['C', 'C♯', 'D', 'D♯', 'E', 'F', 'F♯', 'G', 'G♯', 'A', 'A♯', 'B'];
+  return `${names[((rounded % 12) + 12) % 12]}${Math.floor(rounded / 12) - 1}`;
+}
+
+export function pitchChartRange(midiValues) {
+  const voiced = midiValues.filter(Number.isFinite).sort((a, b) => a - b);
+  if (!voiced.length) return { min: 57, max: 81 };
+  // Rare tracking errors should not shrink every note in a full-song chart.
+  const low = voiced[Math.floor((voiced.length - 1) * 0.01)];
+  const high = voiced[Math.ceil((voiced.length - 1) * 0.99)];
+  const center = (low + high) / 2;
+  const halfSpan = Math.max(12, Math.min(18, (high - low) / 2 + 4));
+  return { min: Math.floor(center - halfSpan), max: Math.ceil(center + halfSpan) };
+}
+
 export function captureSongTime(audio, endTime, sampleRate, windowSize, delayMs) {
   const captureCenter = endTime - windowSize / (2 * sampleRate);
   return audio.offset + captureCenter - audio.startedAt - delayMs / 1000;
