@@ -119,3 +119,69 @@ test('an original loaded while paused waits for the next play', async () => {
   await player.play(3);
   assert.deepEqual(starts, [[10.02, 3], [10.02, 3]]);
 });
+
+test('natural audio completion freezes the clock, stops both tracks and notifies video once', async () => {
+  const { player, context } = fixture();
+  await player.loadTrack(1);
+  await player.play(175);
+  let endings = 0;
+  const stopped = [];
+  player.onended = () => { endings++; };
+  const sources = [...player.sources];
+  sources.forEach((source, index) => { source.stop = () => stopped.push(index); });
+  const end = sources[0].onended;
+  context.currentTime = player.startedAt + 6;
+  assert.equal(player.currentTime, 180);
+  end();
+  assert.equal(player.playing, false);
+  assert.deepEqual(stopped, [0, 1]);
+  assert.deepEqual(player.sources, [null, null]);
+  context.currentTime += 20;
+  assert.equal(player.currentTime, 180);
+  end();
+  assert.equal(endings, 1);
+});
+
+test('queued end events from a seek or pause cannot finish newer playback', async () => {
+  const { player } = fixture();
+  await player.play(175);
+  let endings = 0;
+  player.onended = () => { endings++; };
+  const beforeSeek = player.sources[0].onended;
+  player.seek(30);
+  beforeSeek();
+  assert.equal(player.playing, true);
+  assert.equal(player.currentTime, 30);
+  const beforePause = player.sources[0].onended;
+  player.pause();
+  await player.play(40);
+  beforePause();
+  assert.equal(player.playing, true);
+  assert.equal(player.currentTime, 40);
+  assert.equal(endings, 0);
+});
+
+test('seeking past the last audio sample finishes without creating silent sources', async () => {
+  const { player, starts } = fixture();
+  await player.play(175);
+  let endings = 0;
+  player.onended = () => { endings++; };
+  player.seek(185);
+  assert.equal(player.playing, false);
+  assert.equal(player.currentTime, 180);
+  assert.equal(starts.length, 1);
+  assert.equal(endings, 1);
+});
+
+test('the guide track cannot extend the song beyond accompaniment completion', async () => {
+  const { player, context } = fixture();
+  await player.load();
+  context.decodeAudioData = async () => ({ duration: 181 });
+  await player.loadTrack(1);
+  await player.play(179);
+  assert.equal(player.sources[1].onended, undefined);
+  player.sources[0].onended();
+  assert.equal(player.duration, 180);
+  assert.equal(player.playing, false);
+  assert.deepEqual(player.sources, [null, null]);
+});

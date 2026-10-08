@@ -4,6 +4,7 @@ export class VideoAudioSync {
   constructor(video, audio) {
     this.video = video;
     this.audio = audio;
+    this.videoSeekTarget = null;
   }
 
   get currentTime() {
@@ -13,8 +14,13 @@ export class VideoAudioSync {
   // Keyboard, buttons and lyrics move both clocks at once, so the lyrics and
   // repeated jumps see the new position before the video finishes seeking.
   seek(time) {
-    this.audio.seek(time);
     this.video.playbackRate = 1;
+    this.seekVideo(time);
+    this.audio.seek(time);
+  }
+
+  seekVideo(time) {
+    this.videoSeekTarget = time;
     this.video.currentTime = time;
   }
 
@@ -27,7 +33,7 @@ export class VideoAudioSync {
     const drift = video.currentTime - time;
     if (Math.abs(drift) > 0.5 || (force && Math.abs(drift) > 0.05)) {
       video.playbackRate = 1;
-      video.currentTime = time;
+      this.seekVideo(time);
     } else {
       // Small clock differences need only a gentle, inaudible video speed change.
       video.playbackRate = Math.abs(drift) <= 0.05 ? 1 : 1 - Math.max(-0.03, Math.min(0.03, drift * 0.1));
@@ -39,7 +45,20 @@ export class VideoAudioSync {
   // pull the video back. Corrections and seek() already match the audio clock.
   seeking() {
     const time = this.video.currentTime;
+    const target = this.videoSeekTarget;
+    this.videoSeekTarget = null;
+    // The seeking event can arrive after buffering or a busy main thread. An
+    // automatic correction still belongs only to video, even if audio moved on.
+    if (target !== null && Math.abs(time - target) < 0.05) return;
     if (Math.abs(time - this.audio.currentTime) > 0.25) this.audio.seek(time);
+  }
+
+  finish() {
+    this.reset();
+    this.video.pause();
+    // The streams can differ slightly in duration; finish both together instead
+    // of leaving a lagging video playing in silence after the last audio sample.
+    this.seekVideo(Number.isFinite(this.video.duration) ? this.video.duration : this.audio.currentTime);
   }
 
   reset() {

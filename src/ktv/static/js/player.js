@@ -17,6 +17,11 @@ const artist = params.get('artist') || '';
 
 document.getElementById('playerTitle').textContent = title || 'Unknown Title';
 document.getElementById('playerArtist').textContent = artist || '';
+const youtubeLink = document.getElementById('youtubeLink');
+if (videoId) {
+  youtubeLink.href = `https://www.youtube.com/watch?v=${encodeURIComponent(videoId)}`;
+  youtubeLink.hidden = false;
+}
 
 const video = document.getElementById('mainVideo');
 video.muted = true; // The video has no audio track; audio is handled separately.
@@ -194,7 +199,10 @@ accompaniment.then(() => reportLoading(audioPlayer.loadTrack(1), '原唱載入�
 
 // timeupdate fires only about four times a second; follow the audio clock every frame.
 function followLyrics() {
-  if (audioPlayer.playing) syncLyrics(audioPlayer.currentTime);
+  if (audioPlayer.playing) {
+    if (!document.hidden) videoSync.followAudio();
+    syncLyrics(audioPlayer.currentTime);
+  }
   requestAnimationFrame(followLyrics);
 }
 requestAnimationFrame(followLyrics);
@@ -232,12 +240,20 @@ video.addEventListener('play', () => {
   }).catch(showAudioError);
 });
 video.addEventListener('pause', () => {
-  if (!document.hidden) {
+  if (!document.hidden && !video.ended) {
     audioPlayer.pause();
     videoSync.reset();
   }
 });
-video.addEventListener('ended', () => { audioPlayer.pause(); videoSync.reset(); });
+audioPlayer.onended = () => videoSync.finish();
+video.addEventListener('ended', () => {
+  // A video that reaches its end slightly ahead must not cut off the audio.
+  videoSync.reset();
+  if (audioPlayer.playing && audioPlayer.currentTime < video.duration && !document.hidden) {
+    videoSync.followAudio({ force: true });
+    if (!video.ended) video.play().catch(() => {});
+  }
+});
 video.addEventListener('seeking', () => videoSync.seeking());
 video.addEventListener('timeupdate', () => {
   if (!document.hidden) videoSync.followAudio();
@@ -248,7 +264,7 @@ document.addEventListener('visibilitychange', () => {
   if (document.hidden) return;
   if (audioPlayer.playing && video.paused) {
     videoSync.followAudio({ force: true });
-    video.play().catch(() => {});
+    if (!video.ended) video.play().catch(() => {});
   } else if (!video.paused) {
     videoSync.followAudio({ force: true });
   }
@@ -427,10 +443,6 @@ searchInput.addEventListener('keydown', (e) => {
 async function init() {
   renderLyrics();
   const restored = await restoreSelection();
-
-  // Pre-fill search input but do not auto-submit — title is often too long
-  const q = artist ? `${artist} ${title}` : title;
-  if (q) searchInput.value = q;
 
   if (!restored) {
     resultsList.innerHTML = '<div class="no-results">輸入關鍵字後按搜尋</div>';

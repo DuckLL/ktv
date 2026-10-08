@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { captureSongTime, hzToMidi, midiToNote, pitchChartRange, pitchDifferenceCents, pitchFeedback, referenceAt } from '../src/ktv/static/js/pitch_math.js';
+import { captureSongTime, hzToMidi, midiToNote, pitchChartRange, pitchDifferenceCents, pitchFeedback, referenceAt, transposeMidi } from '../src/ktv/static/js/pitch_math.js';
 
 test('pitch comparison uses cents and masks sparse reference frames', () => {
   assert.equal(hzToMidi(440), 69);
@@ -27,4 +27,13 @@ test('chart stays at one readable note scale despite pitch tracking outliers', (
   assert.equal(midiToNote(69), 'A4');
   assert.equal(midiToNote(61), 'C♯4');
   assert.equal(midiToNote(null), '—');
+});
+
+test('singing one octave lower matches the lowered target without accepting the original octave', () => {
+  const target = transposeMidi(hzToMidi(440), -12);
+  assert.equal(midiToNote(target), 'A3');
+  assert.equal(pitchDifferenceCents(hzToMidi(220), target), 0);
+  assert.equal(pitchDifferenceCents(hzToMidi(440), target), 1200);
+  assert.equal(transposeMidi(69.25, -12), 57.25);
+  assert.equal(transposeMidi(null, -12), null);
 });

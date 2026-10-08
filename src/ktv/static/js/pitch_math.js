@@ -9,6 +9,10 @@ export function midiToNote(midi) {
   return `${names[((rounded % 12) + 12) % 12]}${Math.floor(rounded / 12) - 1}`;
 }
 
+export function transposeMidi(midi, semitones) {
+  return Number.isFinite(midi) ? midi + semitones : null;
+}
+
 export function pitchChartRange(midiValues) {
   const voiced = midiValues.filter(Number.isFinite).sort((a, b) => a - b);
   if (!voiced.length) return { min: 57, max: 81 };
@@ -43,7 +47,7 @@ export function pitchDifferenceCents(sungMidi, referenceMidi) {
 }
 
 export function pitchFeedback(cents) {
-  if (Math.abs(cents) <= 50) return { label: '接近原唱', className: 'close' };
+  if (Math.abs(cents) <= 50) return { label: '接近目標', className: 'close' };
   return cents > 0
     ? { label: `偏高 ${cents} 音分`, className: 'off' }
     : { label: `偏低 ${-cents} 音分`, className: 'off' };

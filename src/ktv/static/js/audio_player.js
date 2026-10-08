@@ -19,6 +19,7 @@ export class SynchronizedAudioPlayer {
     this.offset = 0;
     this.startedAt = 0;
     this.revision = 0;
+    this.onended = null;
   }
 
   // Playback needs only the first track; the others can load behind it.
@@ -49,7 +50,11 @@ export class SynchronizedAudioPlayer {
   }
 
   get currentTime() {
-    return this.offset + (this.playing ? Math.max(0, this.context.currentTime - this.startedAt) : 0);
+    return Math.min(this.duration, this.offset + (this.playing ? Math.max(0, this.context.currentTime - this.startedAt) : 0));
+  }
+
+  get duration() {
+    return this.buffers[0]?.duration ?? Infinity;
   }
 
   async play(time) {
@@ -63,9 +68,13 @@ export class SynchronizedAudioPlayer {
 
   start(time) {
     this.stopSources();
-    this.offset = Math.max(0, time);
+    this.offset = Math.max(0, Math.min(time, this.duration));
     this.startedAt = this.context.currentTime + 0.02;
     this.playing = true;
+    if (this.offset >= this.duration) {
+      this.finish();
+      return;
+    }
     this.buffers.forEach((buffer, index) => {
       if (buffer) this.startTrack(index, this.startedAt);
     });
@@ -75,16 +84,32 @@ export class SynchronizedAudioPlayer {
   startTrack(index, when) {
     const buffer = this.buffers[index];
     const position = this.offset + Math.max(0, when - this.startedAt);
+    if (position >= buffer.duration) return;
     const source = this.context.createBufferSource();
     source.buffer = buffer;
     source.connect(this.gains[index]);
-    if (position < buffer.duration) source.start(when, position);
     this.sources[index] = source;
+    if (index === 0) {
+      source.onended = () => {
+        // Replaced/stopped sources must never end a newer play or seek.
+        if (this.playing && this.sources[index] === source) this.finish();
+      };
+    }
+    source.start(when, position);
+  }
+
+  finish() {
+    this.revision++;
+    this.offset = this.duration;
+    this.playing = false;
+    this.stopSources();
+    this.onended?.();
   }
 
   stopSources() {
     this.sources.forEach(source => {
       if (!source) return;
+      source.onended = null;
       try { source.stop(); } catch (_) {}
       source.disconnect();
     });
@@ -99,7 +124,7 @@ export class SynchronizedAudioPlayer {
   }
 
   seek(time) {
-    this.offset = Math.max(0, time);
+    this.offset = Math.max(0, Math.min(time, this.duration));
     if (this.playing) this.start(this.offset);
   }
 

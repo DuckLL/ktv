@@ -15,6 +15,11 @@
       <a class="player-logo" href="/">🎤 KTV</a>
       <span class="player-title" id="playerTitle"></span>
       <span class="player-artist" id="playerArtist"></span>
+      <a class="youtube-link" id="youtubeLink" target="_blank" rel="noopener noreferrer" aria-label="在 YouTube 開啟原影片" title="在 YouTube 開啟原影片" hidden>
+        <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true" focusable="false">
+          <path fill="currentColor" d="M23.5 6.2a3 3 0 0 0-2.1-2.1C19.5 3.6 12 3.6 12 3.6s-7.5 0-9.4.5A3 3 0 0 0 .5 6.2 31 31 0 0 0 0 12a31 31 0 0 0 .5 5.8 3 3 0 0 0 2.1 2.1c1.9.5 9.4.5 9.4.5s7.5 0 9.4-.5a3 3 0 0 0 2.1-2.1A31 31 0 0 0 24 12a31 31 0 0 0-.5-5.8ZM9.6 15.6V8.4l6.3 3.6-6.3 3.6Z"/>
+        </svg>
+      </a>
     </header>
 
     <!-- Main: video + lyrics -->
@@ -76,18 +81,22 @@
       <details class="pitch-panel" id="pitchPanel">
         <summary class="panel-summary">
           <span>音準練習</span>
-          <span class="panel-preview">原唱音高 × 你的音高</span>
+          <span class="panel-preview">目標音高 × 你的音高</span>
           <span class="panel-chevron" aria-hidden="true">⌄</span>
         </summary>
         <div class="pitch-content">
           <div class="pitch-toolbar">
             <button class="pitch-mic-button" id="pitchMicToggle" type="button" disabled>開啟麥克風</button>
-            <span class="pitch-legend"><i class="pitch-legend-reference"></i> 原唱 <i class="pitch-legend-singer"></i> 你</span>
+            <label class="pitch-octave-control" for="pitchOctaveToggle" title="音準目標降低一個八度，伴奏維持原調">
+              <input id="pitchOctaveToggle" type="checkbox" role="switch">
+              低八度演唱
+            </label>
+            <span class="pitch-legend"><i class="pitch-legend-reference"></i> 目標 <i class="pitch-legend-singer"></i> 你</span>
             <span class="pitch-result" id="pitchResult">尚無可比對片段</span>
           </div>
-          <canvas id="pitchCanvas" class="pitch-canvas" role="img" aria-label="原唱與你的即時音高曲線"></canvas>
+          <canvas id="pitchCanvas" class="pitch-canvas" role="img" aria-label="目標與你的即時音高曲線"></canvas>
           <div class="pitch-notes" aria-label="目前音高">
-            <span>原唱 <strong id="pitchTargetNote">—</strong></span>
+            <span>目標 <strong id="pitchTargetNote">—</strong></span>
             <span>你 <strong id="pitchSungNote">—</strong></span>
           </div>
           <div class="pitch-footer">
@@ -141,7 +150,7 @@
             <button class="sidebar-btn" id="lyricsSearchBtn">搜尋</button>
           </div>
           <div class="results-list" id="resultsList">
-            <div class="no-results">自動搜尋中…</div>
+            <div class="no-results">輸入關鍵字後按搜尋</div>
           </div>
         </div>
       </details>

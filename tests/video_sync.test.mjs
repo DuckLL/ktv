@@ -93,3 +93,41 @@ test('returning to a paused background video follows ongoing audio', () => {
   sync.seeking();
   assert.deepEqual(seeks, []);
 });
+
+test('a delayed correction event never rewinds audio that kept playing', () => {
+  const { video, audio, seeks, sync } = fixture();
+  video.currentTime = 8;
+  sync.followAudio();
+  audio.currentTime += 1.5;
+  sync.seeking();
+  assert.equal(audio.currentTime, 11.5);
+  assert.deepEqual(seeks, []);
+});
+
+test('audio completion stops a lagging video at its end without seeking audio', () => {
+  const { video, audio, seeks, sync } = fixture();
+  audio.currentTime = 179.9;
+  audio.playing = false;
+  video.currentTime = 178;
+  video.playbackRate = 1.03;
+  video.pause = () => { video.paused = true; };
+  sync.finish();
+  assert.equal(video.paused, true);
+  assert.equal(video.currentTime, 180);
+  assert.equal(video.playbackRate, 1);
+  sync.seeking();
+  assert.deepEqual(seeks, []);
+});
+
+test('completion can pause a background video before its duration metadata arrives', () => {
+  const { video, audio, seeks, sync } = fixture();
+  audio.currentTime = 180;
+  audio.playing = false;
+  video.duration = NaN;
+  video.pause = () => { video.paused = true; };
+  sync.finish();
+  assert.equal(video.currentTime, 180);
+  assert.equal(video.paused, true);
+  sync.seeking();
+  assert.deepEqual(seeks, []);
+});

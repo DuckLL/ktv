@@ -1,9 +1,9 @@
 import { PitchDetector } from '/static/vendor/pitchy/pitchy.js';
-import { captureSongTime, hzToMidi, midiToNote, pitchChartRange, pitchDifferenceCents, pitchFeedback, referenceAt } from '/static/js/pitch_math.js';
+import { captureSongTime, hzToMidi, midiToNote, pitchChartRange, pitchDifferenceCents, pitchFeedback, referenceAt, transposeMidi } from '/static/js/pitch_math.js';
 
 const WINDOW_SIZE = 4096;
-const PAST_SECONDS = 4;
-const FUTURE_SECONDS = 8;
+const PAST_SECONDS = 2;
+const FUTURE_SECONDS = 4;
 
 export class PitchFeedback {
   constructor(audio, videoId) {
@@ -11,6 +11,7 @@ export class PitchFeedback {
     this.videoId = videoId;
     this.panel = document.getElementById('pitchPanel');
     this.button = document.getElementById('pitchMicToggle');
+    this.octaveToggle = document.getElementById('pitchOctaveToggle');
     this.status = document.getElementById('pitchStatus');
     this.result = document.getElementById('pitchResult');
     this.delay = document.getElementById('pitchDelaySlider');
@@ -34,6 +35,11 @@ export class PitchFeedback {
     this.sink = null;
 
     this.button.addEventListener('click', () => this.stream ? this.stopMic() : this.startMic());
+    this.octaveToggle.addEventListener('change', () => {
+      this.updateChartRange();
+      this.resetComparison();
+      this.status.textContent = this.octaveToggle.checked ? '低八度演唱：跟隨降低八度後的目標音高。' : '原八度演唱：跟隨原唱的目標音高。';
+    });
     this.delay.addEventListener('input', () => {
       this.delayValue.textContent = `${this.delay.value} ms`;
       this.resetComparison();
@@ -43,6 +49,16 @@ export class PitchFeedback {
     });
     window.addEventListener('pagehide', () => this.stopMic());
     requestAnimationFrame(() => this.drawLoop());
+  }
+
+  get targetSemitones() {
+    return this.octaveToggle.checked ? -12 : 0;
+  }
+
+  updateChartRange() {
+    if (!this.reference) return;
+    const range = pitchChartRange(this.reference.midi);
+    this.chartRange = { min: range.min + this.targetSemitones, max: range.max + this.targetSemitones };
   }
 
   async loadReference() {
@@ -55,9 +71,9 @@ export class PitchFeedback {
         throw new Error('invalid');
       }
       this.reference = reference;
-      this.chartRange = pitchChartRange(reference.midi);
+      this.updateChartRange();
       this.button.disabled = false;
-      this.status.textContent = '戴耳機後開啟麥克風，就能跟原唱音高對照。';
+      this.status.textContent = '戴耳機後開啟麥克風，就能跟目標音高對照。';
     } catch (_) {
       this.status.textContent = '這首歌尚無音高資料，請回首頁重新處理。';
     }
@@ -121,6 +137,7 @@ export class PitchFeedback {
     this.compared = 0;
     this.close = 0;
     this.result.textContent = '尚無可比對片段';
+    this.status.dataset.grade = '';
   }
 
   onSamples({ samples, endTime }) {
@@ -155,7 +172,7 @@ export class PitchFeedback {
       : [0, 0];
     const sungMidi = clarity >= 0.8 && hz >= 65 && hz <= 1200 ? hzToMidi(hz) : null;
     this.sungNote.textContent = midiToNote(sungMidi);
-    const targetMidi = referenceAt(this.reference, songTime);
+    const targetMidi = transposeMidi(referenceAt(this.reference, songTime), this.targetSemitones);
     const cents = sungMidi !== null && targetMidi !== null
       ? pitchDifferenceCents(sungMidi, targetMidi) : null;
     this.history.push({ time: songTime, midi: sungMidi, cents });
@@ -167,7 +184,7 @@ export class PitchFeedback {
       const feedback = pitchFeedback(cents);
       this.status.textContent = feedback.label;
       this.status.dataset.grade = feedback.className;
-      this.result.textContent = `接近原唱 ${Math.round(this.close / this.compared * 100)}%（${this.compared} 個有效片段）`;
+      this.result.textContent = `接近目標 ${Math.round(this.close / this.compared * 100)}%（${this.compared} 個有效片段）`;
     } else {
       this.status.textContent = sungMidi === null ? '尚未辨識到清楚的單音' : '原唱這段沒有可比對的單音';
       this.status.dataset.grade = '';
@@ -193,7 +210,7 @@ export class PitchFeedback {
     ctx.clearRect(0, 0, width, height);
     const now = this.audio.currentTime;
     const target = referenceAt(this.reference, now) ?? referenceAt(this.reference, now + 0.2);
-    const targetLabel = midiToNote(target);
+    const targetLabel = midiToNote(transposeMidi(target, this.targetSemitones));
     if (this.targetNote.textContent !== targetLabel) this.targetNote.textContent = targetLabel;
     if (!this.audio.playing && this.sungNote.textContent !== '—') this.sungNote.textContent = '—';
     const start = now - PAST_SECONDS;
@@ -242,10 +259,12 @@ export class PitchFeedback {
     ctx.beginPath();
     let connected = false;
     for (let i = first; i <= last; i++) {
-      const midi = this.reference.midi[i];
+      const midi = transposeMidi(this.reference.midi[i], this.targetSemitones);
       if (!Number.isFinite(midi)) { connected = false; continue; }
       if (connected) ctx.lineTo(x(i * this.reference.hop_seconds), y(midi));
       else ctx.moveTo(x(i * this.reference.hop_seconds), y(midi));
+      // Give even an isolated voiced frame its full time width.
+      ctx.lineTo(x((i + 1) * this.reference.hop_seconds), y(midi));
       connected = true;
     }
     ctx.stroke();
@@ -258,6 +277,7 @@ export class PitchFeedback {
       if (point.time < start || !Number.isFinite(point.midi)) { connected = false; continue; }
       if (connected) ctx.lineTo(x(point.time), y(point.midi));
       else ctx.moveTo(x(point.time), y(point.midi));
+      ctx.lineTo(x(point.time + 2048 / this.audio.context.sampleRate), y(point.midi));
       connected = true;
     }
     ctx.stroke();
