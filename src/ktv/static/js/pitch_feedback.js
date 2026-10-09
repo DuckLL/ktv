@@ -52,7 +52,7 @@ export class PitchFeedback {
   }
 
   get targetSemitones() {
-    return this.octaveToggle.checked ? -12 : 0;
+    return (this.audio.keySemitones ?? 0) + (this.octaveToggle.checked ? -12 : 0);
   }
 
   updateChartRange() {

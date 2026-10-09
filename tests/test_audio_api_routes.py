@@ -5,6 +5,8 @@ from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
 from fastapi.responses import FileResponse
+from fastapi import FastAPI
+from httpx import AsyncClient, ASGITransport
 import ktv.api.video as video
 
 
@@ -46,6 +48,32 @@ class AudioApiRouteTests(unittest.IsolatedAsyncioTestCase):
             self.assertIsInstance(response, FileResponse)
             self.assertEqual(response.path, contour)
             self.assertEqual(response.media_type, "application/json")
+
+    async def test_shifted_original_is_served_as_webm_without_changing_zero_key_behavior(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            directory = Path(tmp) / "song"
+            directory.mkdir()
+            (directory / "original.m4a").write_bytes(b"original")
+            shifted = directory / "shifted.webm"
+            with patch.object(video, "CACHE_DIR", Path(tmp)), patch.object(video, "touch", AsyncMock()), patch.object(video, "transposed_audio", AsyncMock(return_value={"original": shifted})) as render:
+                response = await video.serve_original("song", key=-2)
+            self.assertEqual(response.path, shifted)
+            self.assertEqual(response.media_type, "audio/webm")
+            render.assert_awaited_once_with(directory, -2)
+
+    async def test_key_query_rejects_invalid_values_before_loading_media(self):
+        app = FastAPI()
+        app.include_router(video.router)
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            for key in ("7", "-7", "1.5", "invalid"):
+                with self.subTest(key=key):
+                    response = await client.get(f"/audio/song/instrumental?key={key}")
+                    self.assertEqual(response.status_code, 422)
+
+    async def test_render_failure_returns_retryable_error(self):
+        with patch.object(video, "transposed_audio", AsyncMock(side_effect=RuntimeError("failed"))):
+            response = await video.serve_key("song", "instrumental", 2)
+        self.assertEqual(response.status_code, 503)
 
 
 if __name__ == "__main__":

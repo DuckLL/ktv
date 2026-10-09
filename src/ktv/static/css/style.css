@@ -784,6 +784,28 @@ details:not([open]) > .sidebar-content { display: none; }
   color: var(--muted);
 }
 
+.key-control {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 36px;
+  color: var(--muted);
+  font-size: 0.8rem;
+  white-space: nowrap;
+}
+
+.key-control select {
+  min-width: 6.5rem;
+  min-height: 36px;
+  padding: 0.3rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+}
+
 .volume-slider {
   width: 6rem;
   min-width: 4.5rem;
@@ -941,6 +963,9 @@ details:not([open]) > .sidebar-content { display: none; }
   .volume-control {
     justify-content: space-between;
   }
+
+  .key-control { justify-content: space-between; }
+  .key-control select { min-height: 44px; }
 
   .volume-slider,
   .mix-slider {

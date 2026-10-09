@@ -73,3 +73,16 @@ test('octave practice preserves gaps where the original has no reliable pitch', 
   assert.equal(element('pitchTargetNote').textContent, '—');
   assert.equal(element('pitchStatus').dataset.grade, '');
 });
+
+test('song key and octave practice combine into one target while microphone pitch stays absolute', t => {
+  const { feedback, audio, element, sing } = fixture(t);
+  audio.keySemitones = 3;
+  element('pitchOctaveToggle').checked = true;
+  element('pitchOctaveToggle').dispatchEvent(new Event('change'));
+  feedback.draw();
+  assert.equal(feedback.targetSemitones, -9);
+  assert.equal(element('pitchTargetNote').textContent, 'C4');
+  sing(261.625565);
+  assert.equal(element('pitchSungNote').textContent, 'C4');
+  assert.equal(element('pitchStatus').dataset.grade, 'close');
+});

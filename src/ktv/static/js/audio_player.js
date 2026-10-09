@@ -4,6 +4,7 @@ export class SynchronizedAudioPlayer {
   constructor(urls, context = new AudioContext({ latencyHint: 'playback' }), fetchAudio = globalThis.fetch.bind(globalThis)) {
     this.context = context;
     this.urls = urls;
+    this.baseUrls = [...urls];
     this.fetchAudio = fetchAudio;
     this.gains = urls.map(() => {
       const gain = context.createGain();
@@ -20,6 +21,11 @@ export class SynchronizedAudioPlayer {
     this.startedAt = 0;
     this.revision = 0;
     this.onended = null;
+    this.keySemitones = 0;
+    this.keyRevision = 0;
+    this.trackGeneration = 0;
+    this.keyAbort = null;
+    this.onkeychange = null;
   }
 
   // Playback needs only the first track; the others can load behind it.
@@ -28,18 +34,55 @@ export class SynchronizedAudioPlayer {
   }
 
   loadTrack(index) {
+    const generation = this.trackGeneration;
     this.loads[index] ??= (async () => {
-      const response = await this.fetchAudio(this.urls[index]);
-      if (!response.ok) throw new Error(`Audio download failed (${response.status})`);
-      const data = await response.arrayBuffer();
-      // Avoid two large decoder jobs competing for memory on mobile devices.
-      const decoded = this.decoding.then(() => this.context.decodeAudioData(data));
-      this.decoding = decoded.catch(() => {});
-      this.buffers[index] = await decoded;
+      const buffer = await this.decodeTrack(this.urls[index]);
+      if (generation !== this.trackGeneration) return;
+      this.buffers[index] = buffer;
       // A track that finishes loading mid-song joins the running clock.
       if (this.playing) this.startTrack(index, this.context.currentTime + 0.02);
     })();
     return this.loads[index];
+  }
+
+  async decodeTrack(url, signal) {
+    const response = await this.fetchAudio(url, { signal });
+    if (!response.ok) throw new Error(`Audio download failed (${response.status})`);
+    const data = await response.arrayBuffer();
+    // Share the decoder queue with key changes to bound mobile memory spikes.
+    const decoded = this.decoding.then(() => this.context.decodeAudioData(data));
+    this.decoding = decoded.catch(() => {});
+    return decoded;
+  }
+
+  async setKey(semitones) {
+    if (!Number.isInteger(semitones) || semitones < -6 || semitones > 6) throw new RangeError('Key must be an integer from -6 to 6');
+    const revision = ++this.keyRevision;
+    this.keyAbort?.abort();
+    if (semitones === this.keySemitones) return;
+    const controller = new AbortController();
+    this.keyAbort = controller;
+    const urls = this.baseUrls.map(url => semitones === 0 ? url : `${url}${url.includes('?') ? '&' : '?'}key=${semitones}`);
+    const buffers = [];
+    try {
+      for (const url of urls) {
+        buffers.push(await this.decodeTrack(url, controller.signal));
+        if (revision !== this.keyRevision) return;
+      }
+      // Swap both tracks at the live position, after preparation. A pause, seek
+      // or natural ending while loading must remain the user's latest action.
+      const position = this.currentTime;
+      this.trackGeneration++;
+      this.urls = urls;
+      this.buffers = buffers;
+      this.loads = buffers.map(() => Promise.resolve());
+      this.keySemitones = semitones;
+      if (this.playing) this.start(position);
+      else this.offset = Math.min(position, this.duration);
+      this.onkeychange?.(semitones);
+    } finally {
+      if (this.keyAbort === controller) this.keyAbort = null;
+    }
   }
 
   setVolumes(volumes) {

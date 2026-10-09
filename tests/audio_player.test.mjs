@@ -185,3 +185,101 @@ test('the guide track cannot extend the song beyond accompaniment completion', a
   assert.equal(player.playing, false);
   assert.deepEqual(player.sources, [null, null]);
 });
+
+test('changing key replaces both tracks together at the live clock position', async () => {
+  const { player, context, starts, fetched } = fixture();
+  await player.loadTrack(1);
+  await player.play(5);
+  const previous = [...player.sources];
+  let notified;
+  player.onkeychange = key => { notified = key; };
+  context.currentTime = 12.02;
+  await player.setKey(3);
+  assert.deepEqual(fetched.slice(-2), ['instrumental?key=3', 'original?key=3']);
+  assert.deepEqual(starts.slice(-2), [[12.04, 7], [12.04, 7]]);
+  assert.equal(player.keySemitones, 3);
+  assert.equal(notified, 3);
+  assert.equal(player.currentTime, 7);
+  assert.ok(player.sources.every((source, i) => source !== previous[i]));
+  assert.ok(previous.every(source => source.onended === null));
+});
+
+test('failure preparing either track leaves the previous key and playback intact', async () => {
+  const { player, starts } = fixture(async url => ({ ok: url !== 'original?key=2', status: 503, arrayBuffer: async () => new ArrayBuffer(1) }));
+  await player.play(5);
+  const sources = [...player.sources];
+  await assert.rejects(player.setKey(2), /503/);
+  assert.equal(player.keySemitones, 0);
+  assert.equal(player.playing, true);
+  assert.deepEqual(player.sources, sources);
+  assert.equal(starts.length, 1);
+});
+
+test('rapid key changes apply only the latest selection even if old requests finish late', async () => {
+  let release;
+  const pending = new Promise(resolve => { release = resolve; });
+  const { player } = fixture(async url => {
+    if (url === 'instrumental?key=1') await pending;
+    return { ok: true, arrayBuffer: async () => new ArrayBuffer(1) };
+  });
+  await player.load();
+  const first = player.setKey(1);
+  await player.setKey(-2);
+  release();
+  await first;
+  assert.equal(player.keySemitones, -2);
+  assert.deepEqual(player.urls, ['instrumental?key=-2', 'original?key=-2']);
+});
+
+test('returning to the current key cancels an in-flight change', async () => {
+  let release;
+  const pending = new Promise(resolve => { release = resolve; });
+  const { player } = fixture(async url => {
+    if (url.includes('?key=')) await pending;
+    return { ok: true, arrayBuffer: async () => new ArrayBuffer(1) };
+  });
+  await player.load();
+  const changing = player.setKey(4);
+  await player.setKey(0);
+  release();
+  await changing;
+  assert.equal(player.keySemitones, 0);
+  assert.deepEqual(player.urls, ['instrumental', 'original']);
+});
+
+test('a pause and seek during key preparation remain in effect when loading finishes', async () => {
+  let release;
+  const pending = new Promise(resolve => { release = resolve; });
+  const { player, starts } = fixture(async url => {
+    if (url.includes('?key=')) await pending;
+    return { ok: true, arrayBuffer: async () => new ArrayBuffer(1) };
+  });
+  await player.play(3);
+  const changing = player.setKey(-1);
+  player.pause();
+  player.seek(40);
+  release();
+  await changing;
+  assert.equal(player.playing, false);
+  assert.equal(player.currentTime, 40);
+  assert.equal(player.keySemitones, -1);
+  assert.equal(starts.length, 1);
+});
+
+test('an old guide-vocal preload cannot overwrite a newly selected key', async () => {
+  let release;
+  const pending = new Promise(resolve => { release = resolve; });
+  const { player } = fixture(async url => {
+    if (url === 'original') await pending;
+    return { ok: true, arrayBuffer: async () => new ArrayBuffer(1) };
+  });
+  const oldOriginal = player.loadTrack(1);
+  await player.play(3);
+  await player.setKey(2);
+  const shifted = player.buffers[1];
+  const source = player.sources[1];
+  release();
+  await oldOriginal;
+  assert.equal(player.buffers[1], shifted);
+  assert.equal(player.sources[1], source);
+});

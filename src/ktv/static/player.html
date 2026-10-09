@@ -39,7 +39,7 @@
 
       <details class="playback-settings" id="playbackSettings" open>
         <summary class="panel-summary">
-          <span>音量與導唱</span>
+          <span>音量、導唱與升降 key</span>
           <span class="panel-preview" id="audioSettingsSummary">音量 80% · 伴唱</span>
           <span class="panel-chevron" aria-hidden="true">⌄</span>
         </summary>
@@ -57,6 +57,24 @@
               aria-label="主音量"
             >
             <span class="volume-value" id="volumeValue" aria-live="polite">80%</span>
+          </label>
+          <label class="key-control" for="keySelect">
+            <span>升降 key</span>
+            <select id="keySelect" aria-label="歌曲升降 key，每格半音，速度不變">
+              <option value="-6">−6 半音</option>
+              <option value="-5">−5 半音</option>
+              <option value="-4">−4 半音</option>
+              <option value="-3">−3 半音</option>
+              <option value="-2">−2 半音</option>
+              <option value="-1">−1 半音</option>
+              <option value="0" selected>原調</option>
+              <option value="1">+1 半音</option>
+              <option value="2">+2 半音</option>
+              <option value="3">+3 半音</option>
+              <option value="4">+4 半音</option>
+              <option value="5">+5 半音</option>
+              <option value="6">+6 半音</option>
+            </select>
           </label>
           <div class="audio-toggle" aria-label="音軌混音">
             <button class="audio-toggle-btn active" id="btnInstrumental">🎵 伴唱</button>
@@ -78,6 +96,7 @@
         </div>
       </details>
       <div class="audio-status" id="audioStatus" role="status" aria-live="polite">音訊載入中…</div>
+      <div class="audio-status" id="keyStatus" role="status" aria-live="polite"></div>
       <details class="pitch-panel" id="pitchPanel">
         <summary class="panel-summary">
           <span>音準練習</span>
@@ -87,7 +106,7 @@
         <div class="pitch-content">
           <div class="pitch-toolbar">
             <button class="pitch-mic-button" id="pitchMicToggle" type="button" disabled>開啟麥克風</button>
-            <label class="pitch-octave-control" for="pitchOctaveToggle" title="音準目標降低一個八度，伴奏維持原調">
+            <label class="pitch-octave-control" for="pitchOctaveToggle" title="音準目標比目前歌曲的 key 低一個八度">
               <input id="pitchOctaveToggle" type="checkbox" role="switch">
               低八度演唱
             </label>

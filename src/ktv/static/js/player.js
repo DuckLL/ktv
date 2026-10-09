@@ -210,6 +210,34 @@ let masterVolume = 0.8;
 let mixAmount = 0;
 const volumeSlider = document.getElementById('volumeSlider');
 const volumeValue = document.getElementById('volumeValue');
+const keySelect = document.getElementById('keySelect');
+const keyStatus = document.getElementById('keyStatus');
+let keySelectionRevision = 0;
+
+function keyLabel(key) {
+  return key === 0 ? '原調' : `${key > 0 ? '+' : '−'}${Math.abs(key)} 半音`;
+}
+
+audioPlayer.onkeychange = () => {
+  pitchFeedback.updateChartRange();
+  pitchFeedback.resetComparison();
+  applyMixVolumes();
+};
+
+keySelect.addEventListener('change', async () => {
+  const revision = ++keySelectionRevision;
+  const key = Number(keySelect.value);
+  keyStatus.textContent = `正在準備${keyLabel(key)}…首次使用可能需要幾秒鐘。`;
+  try {
+    await audioPlayer.setKey(key);
+    if (revision !== keySelectionRevision) return;
+    keyStatus.textContent = '';
+  } catch (_) {
+    if (revision !== keySelectionRevision) return;
+    keyStatus.textContent = `升降 key 失敗，仍使用${keyLabel(audioPlayer.keySemitones)}。請稍後再試。`;
+  }
+  keySelect.value = String(audioPlayer.keySemitones);
+});
 
 function setVolume(v) {
   masterVolume = Math.round(Math.max(0, Math.min(1, v)) * 100) / 100;
@@ -226,7 +254,7 @@ function applyMixVolumes() {
   const volumes = calculateMixVolumes(masterVolume, mixAmount);
   audioPlayer.setVolumes([volumes.instrumental, volumes.original]);
   const mixLabel = mixAmount === 0 ? '伴唱' : mixAmount === 1 ? '原唱' : `導唱 ${Math.round(mixAmount * 100)}%`;
-  document.getElementById('audioSettingsSummary').textContent = `音量 ${Math.round(masterVolume * 100)}% · ${mixLabel}`;
+  document.getElementById('audioSettingsSummary').textContent = `音量 ${Math.round(masterVolume * 100)}% · ${mixLabel} · ${keyLabel(audioPlayer.keySemitones)}`;
 }
 
 video.addEventListener('play', () => {
