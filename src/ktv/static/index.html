@@ -10,19 +10,25 @@
 <body>
   <div class="home">
     <div class="home-logo">🎤 KTV</div>
-    <div class="home-subtitle">YouTube 卡拉 OK 播放器</div>
+    <div class="home-subtitle">找一首歌，開始你的練唱</div>
 
     <form class="url-form" id="urlForm">
       <input
         class="url-input"
         id="urlInput"
-        type="url"
-        placeholder="貼上 YouTube 網址…"
+        type="text"
+        aria-label="搜尋歌名、歌手或貼上 YouTube 網址"
+        placeholder="輸入歌名、歌手，或貼上 YouTube 網址…"
         required
         autocomplete="off"
       >
-      <button class="btn" type="submit" id="submitBtn">開始處理</button>
+      <button class="btn" type="submit" id="submitBtn">搜尋</button>
     </form>
+
+    <section class="song-search-results" id="songSearchResults" aria-label="YouTube 搜尋結果" hidden>
+      <p id="songSearchStatus" role="status" aria-live="polite"></p>
+      <div class="song-search-list" id="songSearchList"></div>
+    </section>
 
     <div class="progress-wrap" id="progressWrap">
       <div class="progress-label" id="progressLabel">準備中…</div>

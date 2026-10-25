@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { captureSongTime, hzToMidi, midiToNote, pitchChartRange, pitchDifferenceCents, pitchFeedback, referenceAt, transposeMidi } from '../src/ktv/static/js/pitch_math.js';
+import { captureSongTime, hzToMidi, midiToNote, pitchChartRange, pitchDifferenceCents, pitchFeedback, referenceAt, transposeMidi, LivePitchTracker, matchReference, PRACTICE_MODES } from '../src/ktv/static/js/pitch_math.js';
 
 test('pitch comparison uses cents and masks sparse reference frames', () => {
   assert.equal(hzToMidi(440), 69);
@@ -36,4 +36,32 @@ test('singing one octave lower matches the lowered target without accepting the 
   assert.equal(pitchDifferenceCents(hzToMidi(440), target), 1200);
   assert.equal(transposeMidi(69.25, -12), 57.25);
   assert.equal(transposeMidi(null, -12), null);
+});
+
+test('microphone spikes are hidden and a sustained genuine octave is accepted', () => {
+  const tracker = new LivePitchTracker();
+  assert.equal(tracker.update(60, 0), 60);
+  assert.equal(tracker.update(72, 0.04), null);
+  assert.equal(tracker.update(60, 0.08), 60);
+  assert.equal(tracker.update(48, 0.12), null);
+  assert.equal(tracker.update(48, 0.16), null);
+  assert.equal(tracker.update(48, 0.22), 48);
+  tracker.update(null, 0.5);
+  assert.equal(tracker.update(72, 0.6), 72);
+});
+
+test('timing grace accepts a slightly late note, but never bridges rests or ignores an octave', () => {
+  const reference = { hop_seconds: 0.02, midi: [...Array(20).fill(60), ...Array(20).fill(64), ...Array(20).fill(null), ...Array(20).fill(67)] };
+  assert.equal(matchReference(reference, 0.44, 60, 0, 0.12), 60);
+  assert.equal(matchReference(reference, 0.6, 60, 0, 0.12), 64);
+  assert.equal(matchReference(reference, 0.9, 64, 0, 0.18), null);
+  assert.equal(matchReference(reference, 1.2, 64, 0, 0.18), 67);
+  assert.equal(pitchDifferenceCents(72, matchReference(reference, 0.2, 72, 0, 0.12)), 1200);
+  assert.equal(pitchFeedback(75, PRACTICE_MODES.practice.cents).className, 'close');
+  assert.equal(pitchFeedback(90, PRACTICE_MODES.practice.cents).className, 'off');
+});
+
+test('audible output latency and manual microphone correction share the song clock', () => {
+  const audio = { offset: 32, startedAt: 10, context: { baseLatency: 0.02, outputLatency: 0.08 } };
+  assert.ok(Math.abs(captureSongTime(audio, 11.5, 48000, 4800, 150) - 33.2) < 1e-8);
 });

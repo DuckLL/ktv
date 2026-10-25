@@ -110,6 +110,20 @@
               <input id="pitchOctaveToggle" type="checkbox" role="switch">
               低八度演唱
             </label>
+            <label class="practice-select" for="pitchTolerance">容錯
+              <select id="pitchTolerance">
+                <option value="practice" selected>練習 ±80 音分／120 ms</option>
+                <option value="relaxed">寬鬆 ±100 音分／180 ms</option>
+                <option value="strict">精準 ±50 音分／50 ms</option>
+              </select>
+            </label>
+            <label class="practice-select" for="pitchSensitivity">收音
+              <select id="pitchSensitivity">
+                <option value="normal">一般</option>
+                <option value="quiet">輕聲</option>
+                <option value="noisy">抗雜音</option>
+              </select>
+            </label>
             <span class="pitch-legend"><i class="pitch-legend-reference"></i> 目標 <i class="pitch-legend-singer"></i> 你</span>
             <span class="pitch-result" id="pitchResult">尚無可比對片段</span>
           </div>
@@ -118,10 +132,11 @@
             <span>目標 <strong id="pitchTargetNote">—</strong></span>
             <span>你 <strong id="pitchSungNote">—</strong></span>
           </div>
+          <p class="practice-hint" id="pitchTempo"></p>
           <div class="pitch-footer">
             <span id="pitchStatus">音高資料載入中…</span>
             <label for="pitchDelaySlider">收音延遲校正
-              <input id="pitchDelaySlider" type="range" min="0" max="600" step="10" value="0">
+              <input id="pitchDelaySlider" type="range" min="-300" max="600" step="10" value="0">
               <span id="pitchDelayValue">0 ms</span>
             </label>
           </div>
@@ -146,6 +161,13 @@
           <button class="offset-btn reset" id="offsetReset">重置</button>
           <span class="offset-saved" id="offsetSaved">已儲存</span>
         </div>
+        <div class="lyric-alignment-controls">
+          <button class="offset-btn" id="alignLyrics" type="button">依人聲對齊</button>
+          <button class="offset-btn" id="lyricLineEarlier" type="button">此句提早 0.1s</button>
+          <button class="offset-btn" id="lyricLineLater" type="button">此句延後 0.1s</button>
+          <button class="offset-btn" id="lyricLineNow" type="button">此句對齊現在</button>
+          <span class="practice-hint" id="lyricAlignmentStatus" role="status" aria-live="polite"></span>
+        </div>
       </details>
     </main>
 
@@ -158,6 +180,7 @@
           <span class="panel-chevron" aria-hidden="true">⌄</span>
         </summary>
         <div class="sidebar-content">
+          <p class="lyrics-auto-status" id="lyricsAutoStatus" role="status" aria-live="polite"></p>
           <div class="sidebar-search">
             <input
               class="sidebar-input"
@@ -168,6 +191,7 @@
             >
             <button class="sidebar-btn" id="lyricsSearchBtn">搜尋</button>
           </div>
+          <button class="lyrics-auto-button" id="lyricsAutoRetry" type="button">重新自動找歌詞</button>
           <div class="results-list" id="resultsList">
             <div class="no-results">輸入關鍵字後按搜尋</div>
           </div>

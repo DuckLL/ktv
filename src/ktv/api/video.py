@@ -7,6 +7,7 @@ from ktv.config import CACHE_DIR
 from ktv.core.cache import touch
 from ktv.core.audio import AUDIO_MEDIA_TYPES, original_audio_path
 from ktv.core.transpose import transposed_audio
+from ktv.core.pitch import prepare_practice_reference
 
 router = APIRouter()
 
@@ -58,4 +59,8 @@ async def serve_pitch(video_id: str):
     if not path.exists():
         return JSONResponse({"error": "Pitch data not found; reprocess this song"}, status_code=404)
     await touch(video_id)
-    return FileResponse(path, media_type="application/json")
+    try:
+        prepared = await prepare_practice_reference(path.parent)
+        return FileResponse(prepared, media_type="application/json")
+    except (OSError, ValueError, TypeError):
+        return JSONResponse({"error": "Invalid pitch data; reprocess this song"}, status_code=422)

@@ -10,6 +10,58 @@ const progressFill = document.getElementById('progressFill');
 const libraryWrap = document.getElementById('libraryWrap');
 const libraryGrid = document.getElementById('libraryGrid');
 const librarySearch = document.getElementById('librarySearch');
+const searchResults = document.getElementById('songSearchResults');
+const songSearchStatus = document.getElementById('songSearchStatus');
+const songSearchList = document.getElementById('songSearchList');
+let searchRequest = null;
+
+function isLink(text) { return /^(?:https?:\/\/|(?:www\.)?(?:youtube\.com|youtu\.be)\/)/i.test(text); }
+
+urlInput.addEventListener('input', () => {
+  submitBtn.textContent = isLink(urlInput.value.trim()) ? '開始處理' : '搜尋';
+});
+
+async function findSongs(query) {
+  searchRequest?.abort();
+  const request = new AbortController();
+  searchRequest = request;
+  searchResults.hidden = false;
+  songSearchList.replaceChildren();
+  songSearchStatus.textContent = '正在搜尋 YouTube…';
+  try {
+    const response = await fetch(`/api/songs/search?q=${encodeURIComponent(query)}`, { signal: request.signal });
+    const songs = await response.json();
+    if (request !== searchRequest) return;
+    if (!response.ok) throw new Error(songs.error || '搜尋失敗');
+    songSearchStatus.textContent = songs.length ? '選擇想練唱的版本' : '找不到歌曲，試試歌名加歌手。';
+    for (const song of songs) {
+      const row = document.createElement('article');
+      row.className = 'song-search-item';
+      const copy = document.createElement('div');
+      const title = document.createElement('strong');
+      title.textContent = song.title;
+      const meta = document.createElement('p');
+      const duration = Number.isFinite(song.duration) ? ` · ${Math.floor(song.duration / 60)}:${String(Math.floor(song.duration % 60)).padStart(2, '0')}` : '';
+      meta.textContent = `${song.artist}${duration}`;
+      copy.append(title, meta);
+      const button = document.createElement('button');
+      button.className = 'song-add-button';
+      const existing = allLibrary.find(item => item.video_id === song.video_id);
+      button.textContent = existing && !isPendingVideo(existing) && !existing.error ? '開始練唱' : '加入練唱';
+      button.addEventListener('click', async () => {
+        if (existing && !isPendingVideo(existing) && !existing.error) { goToPlayer(existing); return; }
+        button.disabled = true;
+        const success = await submitUrl(`https://www.youtube.com/watch?v=${song.video_id}`);
+        button.textContent = success ? '已加入歌曲庫' : '重試';
+        button.disabled = success;
+      });
+      row.append(copy, button);
+      songSearchList.appendChild(row);
+    }
+  } catch (error) {
+    if (error.name !== 'AbortError') songSearchStatus.textContent = error.message || '搜尋暫時無法使用，仍可貼上網址。';
+  }
+}
 
 // ── Library ───────────────────────────────────────────
 let allLibrary = [];
@@ -114,7 +166,14 @@ librarySearch.addEventListener('input', () => {
 form.addEventListener('submit', async (e) => {
   e.preventDefault();
   const url = urlInput.value.trim();
-  if (url && await submitUrl(url)) urlInput.value = '';
+  if (!url) return;
+  if (!isLink(url)) { await findSongs(url); return; }
+  searchRequest?.abort();
+  searchResults.hidden = true;
+  if (await submitUrl(url)) {
+    urlInput.value = '';
+    submitBtn.textContent = '搜尋';
+  }
 });
 
 async function submitUrl(url) {

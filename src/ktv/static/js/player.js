@@ -2,6 +2,7 @@ import { parseLrc, findActiveIndex, getNavigationTime, rankLyricResults } from '
 import { SynchronizedAudioPlayer } from '/static/js/audio_player.js';
 import { VideoAudioSync } from '/static/js/video_sync.js';
 import { PitchFeedback } from '/static/js/pitch_feedback.js';
+import { suggestLyricOffset, retimeLyricLine, serializeLrc } from '/static/js/lyric_alignment.js';
 import {
   calculateMixVolumes,
   formatVolumePercent,
@@ -32,6 +33,9 @@ let lrcLines = [];
 let activeIdx = -1;
 let selectedLrcId = null;
 let offsetSeconds = 0;
+let selectedItem = null;
+let selectionRevision = 0;
+let selectionSave = Promise.resolve();
 
 const lyricsStage = document.getElementById('lyricsStage');
 const previousLine = document.getElementById('previousLine');
@@ -124,46 +128,67 @@ video.addEventListener('timeupdate', () => syncLyrics(videoSync.currentTime));
 // ── Offset controls ───────────────────────────────────
 const offsetValueEl = document.getElementById('offsetValue');
 const offsetSavedEl = document.getElementById('offsetSaved');
-let saveTimer = null;
+const offsetTimers = new Map();
+const pendingOffsets = new Map();
+let offsetSave = Promise.resolve();
 
-function setOffset(val) {
+function setOffset(val, save = true) {
   offsetSeconds = Math.round(val * 100) / 100;
   offsetValueEl.textContent = (offsetSeconds >= 0 ? '+' : '') + offsetSeconds.toFixed(2) + ' s';
   document.getElementById('offsetSummary').textContent = offsetValueEl.textContent;
   activeIdx = -1;
-  syncLyrics(video.currentTime);
-  scheduleSave();
+  syncLyrics(videoSync.currentTime);
+  if (save) scheduleSave();
 }
 
 function scheduleSave() {
   if (!selectedLrcId) return;
-  clearTimeout(saveTimer);
-  saveTimer = setTimeout(saveOffset, 800);
+  const id = selectedLrcId;
+  const offset = offsetSeconds;
+  clearTimeout(offsetTimers.get(id));
+  pendingOffsets.set(id, offset);
+  offsetTimers.set(id, setTimeout(() => {
+    offsetTimers.delete(id);
+    saveOffset(id, offset);
+  }, 800));
 }
 
-async function saveOffset() {
-  if (!selectedLrcId || !videoId) return;
+async function saveOffset(id, offset) {
+  if (!id || !videoId) return;
+  const saving = offsetSave.catch(() => {}).then(() => fetch(`/api/offset/${videoId}/${id}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ offset }),
+  }));
+  offsetSave = saving;
   try {
-    await fetch(`/api/offset/${videoId}/${selectedLrcId}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ offset: offsetSeconds }),
-    });
-    flashSaved();
-  } catch (_) {}
-}
-
-async function loadOffset(lrcId) {
-  try {
-    const resp = await fetch(`/api/offset/${videoId}/${lrcId}`);
-    const data = await resp.json();
-    setOffset(data.offset ?? 0);
+    const response = await saving;
+    if (!response.ok) throw new Error('儲存失敗');
+    if (pendingOffsets.get(id) === offset) pendingOffsets.delete(id);
+    if (String(id) === String(selectedLrcId) && offset === offsetSeconds) flashSaved();
   } catch (_) {
-    setOffset(0);
+    if (String(id) === String(selectedLrcId)) {
+      offsetSavedEl.textContent = '儲存失敗';
+      offsetSavedEl.classList.add('show');
+    }
+  }
+}
+
+async function fetchOffset(lrcId) {
+  const id = String(lrcId);
+  if (pendingOffsets.has(id)) return pendingOffsets.get(id);
+  try {
+    const resp = await fetch(`/api/offset/${videoId}/${id}`);
+    if (!resp.ok) throw new Error('讀取失敗');
+    const data = await resp.json();
+    return pendingOffsets.get(id) ?? (Number.isFinite(data.offset) ? data.offset : 0);
+  } catch (_) {
+    return pendingOffsets.get(id) ?? 0;
   }
 }
 
 function flashSaved() {
+  offsetSavedEl.textContent = '已儲存';
   offsetSavedEl.classList.add('show');
   setTimeout(() => offsetSavedEl.classList.remove('show'), 1500);
 }
@@ -179,7 +204,7 @@ const audioPlayer = new SynchronizedAudioPlayer([
 ]);
 const videoSync = new VideoAudioSync(video, audioPlayer);
 const pitchFeedback = new PitchFeedback(audioPlayer, videoId);
-pitchFeedback.loadReference();
+const referenceReady = pitchFeedback.loadReference();
 const audioStatus = document.getElementById('audioStatus');
 function showAudioError() {
   audioStatus.textContent = '音訊載入失敗，請在首頁重新處理這首歌';
@@ -360,13 +385,21 @@ const searchBtn = document.getElementById('lyricsSearchBtn');
 const resultsList = document.getElementById('resultsList');
 
 async function doSearch(q) {
+  const revision = ++lyricSearchRevision;
   resultsList.innerHTML = '<div class="no-results">搜尋中…</div>';
   try {
     const resp = await fetch(`/api/lyrics/search?q=${encodeURIComponent(q)}`);
     const data = await resp.json();
+    if (revision !== lyricSearchRevision) return;
+    if (!resp.ok) throw new Error(data.error || '歌詞搜尋失敗');
     renderResults(Array.isArray(data) ? data : []);
   } catch (e) {
-    resultsList.innerHTML = `<div class="no-results">搜尋失敗：${e.message}</div>`;
+    if (revision !== lyricSearchRevision) return;
+    resultsList.replaceChildren();
+    const error = document.createElement('div');
+    error.className = 'no-results';
+    error.textContent = `搜尋失敗：${e.message}`;
+    resultsList.appendChild(error);
   }
 }
 
@@ -393,7 +426,9 @@ function renderResults(items) {
 }
 
 async function selectLyrics(item, clickedEl) {
-  selectedLrcId = String(item.id);
+  const revision = ++selectionRevision;
+  const id = String(item.id);
+  const loadingOffset = fetchOffset(id);
   resultsList.querySelectorAll('.result-item').forEach(el => el.classList.remove('selected'));
   if (clickedEl) clickedEl.classList.add('selected');
 
@@ -406,50 +441,61 @@ async function selectLyrics(item, clickedEl) {
     } catch (_) {}
   }
 
+  const offset = await loadingOffset;
+  if (revision !== selectionRevision) return;
+
+  selectedLrcId = id;
+  selectedItem = item;
   lrcLines = syncedLyrics ? parseLrc(syncedLyrics) : [];
   activeIdx = -1;
   renderLyrics();
-
-  await loadOffset(selectedLrcId);
-  syncLyrics(video.currentTime);
+  setOffset(offset, false);
   document.getElementById('lyricsSelectionSummary').textContent = item.trackName || '已選擇';
   if (mobileLayout.matches && lrcLines.length) searchPanel.open = false;
 
   // Persist selection to DB
-  saveSelection(item, syncedLyrics);
+  const saved = await saveSelection(item, syncedLyrics);
+  if (!saved && revision === selectionRevision) autoStatus.textContent = '歌詞已選用，但儲存失敗，請再選一次重試。';
+  return saved;
 }
 
 async function saveSelection(item, syncedLyrics) {
   if (!videoId) return;
+  const body = JSON.stringify({
+    lrclib_id: String(item.id), track_name: item.trackName || '',
+    artist_name: item.artistName || '', synced_lyrics: syncedLyrics || null,
+  });
+  const saving = selectionSave.catch(() => {}).then(() => fetch(`/api/selection/${videoId}`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body,
+  }));
+  selectionSave = saving;
   try {
-    await fetch(`/api/selection/${videoId}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        lrclib_id: String(item.id),
-        track_name: item.trackName || '',
-        artist_name: item.artistName || '',
-        synced_lyrics: syncedLyrics || null,
-      }),
-    });
-  } catch (_) {}
+    const response = await saving;
+    if (!response.ok) throw new Error('儲存失敗');
+    return true;
+  } catch (_) { return false; }
 }
 
 // ── Auto-restore last selection ───────────────────────
 async function restoreSelection() {
+  const revision = selectionRevision;
   if (!videoId) return false;
   try {
     const resp = await fetch(`/api/selection/${videoId}`);
     if (resp.status === 204) return false;
     const saved = await resp.json();
+    if (revision !== selectionRevision) return null;
     if (!saved?.lrclib_id) return false;
 
+    const offset = await fetchOffset(saved.lrclib_id);
+    if (revision !== selectionRevision) return null;
+
     selectedLrcId = saved.lrclib_id;
+    selectedItem = { id: saved.lrclib_id, trackName: saved.track_name, artistName: saved.artist_name };
     lrcLines = saved.synced_lyrics ? parseLrc(saved.synced_lyrics) : [];
     document.getElementById('lyricsSelectionSummary').textContent = saved.track_name || '已選擇';
     renderLyrics();
-    await loadOffset(selectedLrcId);
-    syncLyrics(video.currentTime);
+    setOffset(offset, false);
 
     // Mark the saved result as selected once search results load
     return true;
@@ -459,21 +505,105 @@ async function restoreSelection() {
 }
 
 searchBtn.addEventListener('click', () => {
+  selectionRevision++;
+  autoStatus.textContent = '';
   const q = searchInput.value.trim();
   if (q) doSearch(q);
 });
 
 searchInput.addEventListener('keydown', (e) => {
-  if (e.key === 'Enter') { e.preventDefault(); const q = searchInput.value.trim(); if (q) doSearch(q); }
+  if (e.key === 'Enter') { e.preventDefault(); selectionRevision++; const q = searchInput.value.trim(); if (q) doSearch(q); }
 });
+
+let lyricSearchRevision = 0;
+const autoStatus = document.getElementById('lyricsAutoStatus');
+const alignmentStatus = document.getElementById('lyricAlignmentStatus');
+
+function songDuration() {
+  const duration = Number.isFinite(audioPlayer.duration) ? audioPlayer.duration : video.duration;
+  return Number.isFinite(duration) ? duration : 0;
+}
+
+async function autoFindLyrics() {
+  if (!title) return;
+  const searchRevision = ++lyricSearchRevision;
+  const selection = selectionRevision;
+  autoStatus.textContent = '正在依歌名、歌手與長度自動找歌詞…';
+  const query = new URLSearchParams({ title, artist, duration: String(songDuration()) });
+  try {
+    const response = await fetch(`/api/lyrics/auto?${query}`);
+    const data = await response.json();
+    if (searchRevision !== lyricSearchRevision || selection !== selectionRevision) return;
+    if (!response.ok) throw new Error(data.error || '自動找詞失敗');
+    searchInput.value = data.query || `${artist} ${title}`.trim();
+    renderResults(data.results || []);
+    if (data.selected) {
+      const chosenRevision = selectionRevision + 1;
+      const saved = await selectLyrics(data.selected);
+      if (selectionRevision !== chosenRevision) return;
+      autoStatus.textContent = saved
+        ? `已自動選用：${data.selected.artistName} — ${data.selected.trackName}`
+        : '歌詞已選用，但儲存失敗，請重新選用或稍後重試。';
+      await alignLyrics(true);
+    } else {
+      autoStatus.textContent = data.results?.length ? '找到候選歌詞，請確認歌曲版本。' : '尚未找到，請調整關鍵字搜尋。';
+      if (!lrcLines.length) searchPanel.open = true;
+    }
+  } catch (error) {
+    if (searchRevision === lyricSearchRevision && selection === selectionRevision) autoStatus.textContent = error.message;
+  }
+}
+
+async function alignLyrics(automatic = false) {
+  const selection = selectionRevision;
+  const offset = offsetSeconds;
+  const reference = await referenceReady;
+  if (selection !== selectionRevision || offset !== offsetSeconds) return;
+  const suggestion = suggestLyricOffset(lrcLines, reference, offset);
+  if (!suggestion) {
+    if (!automatic) alignmentStatus.textContent = '未找到明確的整體時間差；可用此句微調。';
+    return;
+  }
+  setOffset(suggestion.offset);
+  alignmentStatus.textContent = `已依 ${suggestion.matched} 句起音校正；請聽看看，可再微調。`;
+}
+
+document.getElementById('alignLyrics').addEventListener('click', () => alignLyrics());
+document.getElementById('lyricsAutoRetry').addEventListener('click', () => autoFindLyrics());
+
+async function editCurrentLine(delta) {
+  if (activeIdx < 0 || !selectedItem || !lrcLines[activeIdx]?.text) {
+    alignmentStatus.textContent = '播放到想調整的歌詞後，再校正此句。';
+    return;
+  }
+  const revision = selectionRevision;
+  const time = delta === null ? videoSync.currentTime + offsetSeconds : lrcLines[activeIdx].time + delta;
+  lrcLines = retimeLyricLine(lrcLines, activeIdx, time);
+  activeIdx = -1;
+  renderLyrics();
+  syncLyrics(videoSync.currentTime);
+  const saved = await saveSelection(selectedItem, serializeLrc(lrcLines));
+  if (revision !== selectionRevision) return;
+  alignmentStatus.textContent = saved ? '已儲存此句時間。' : '此句已調整，但儲存失敗，請再試一次。';
+}
+document.getElementById('lyricLineEarlier').addEventListener('click', () => editCurrentLine(-0.1));
+document.getElementById('lyricLineLater').addEventListener('click', () => editCurrentLine(0.1));
+document.getElementById('lyricLineNow').addEventListener('click', () => editCurrentLine(null));
 
 // ── Init ──────────────────────────────────────────────
 async function init() {
   renderLyrics();
   const restored = await restoreSelection();
+  if (restored === null) return;
 
   if (!restored) {
-    resultsList.innerHTML = '<div class="no-results">輸入關鍵字後按搜尋</div>';
+    // Wait for metadata without delaying the player's audio or microphone setup.
+    if (!Number.isFinite(video.duration) && video.readyState === 0) {
+      await Promise.race([new Promise(resolve => video.addEventListener('loadedmetadata', resolve, { once: true })), new Promise(resolve => setTimeout(resolve, 5000))]);
+    }
+    if (!selectedLrcId && selectionRevision === 0) await autoFindLyrics();
+  } else {
+    autoStatus.textContent = '已還原上次選用的歌詞與校正時間。';
   }
 }
 

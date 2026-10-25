@@ -46,7 +46,10 @@ class AudioApiRouteTests(unittest.IsolatedAsyncioTestCase):
             with patch.object(video, "CACHE_DIR", Path(tmp)), patch.object(video, "touch", AsyncMock()):
                 response = await video.serve_pitch("song")
             self.assertIsInstance(response, FileResponse)
-            self.assertEqual(response.path, contour)
+            self.assertEqual(response.path, job_dir / "practice_pitch.json")
+            prepared = json.loads(Path(response.path).read_text())
+            self.assertIn("notes", prepared)
+            self.assertIn("beats", prepared)
             self.assertEqual(response.media_type, "application/json")
 
     async def test_shifted_original_is_served_as_webm_without_changing_zero_key_behavior(self):

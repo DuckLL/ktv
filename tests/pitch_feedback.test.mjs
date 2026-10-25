@@ -26,9 +26,9 @@ function fixture(t) {
   feedback.reference = { hop_seconds: 0.016, midi: Array(500).fill(69) };
   feedback.stream = {};
   feedback.updateChartRange();
-  function sing(hz) {
+  function sing(hz, amplitude = 0.25) {
     for (let block = 0; block < 2; block++) {
-      const samples = Float32Array.from({ length: 2048 }, (_, i) => 0.25 * Math.sin(2 * Math.PI * hz * (block * 2048 + i) / 48000));
+      const samples = Float32Array.from({ length: 2048 }, (_, i) => amplitude * Math.sin(2 * Math.PI * hz * (block * 2048 + i) / 48000));
       feedback.onSamples({ samples, endTime: 0.2 + (block + 1) * 2048 / 48000 });
     }
   }
@@ -85,4 +85,23 @@ test('song key and octave practice combine into one target while microphone pitc
   sing(261.625565);
   assert.equal(element('pitchSungNote').textContent, 'C4');
   assert.equal(element('pitchStatus').dataset.grade, 'close');
+});
+
+test('quiet sensitivity recognizes a soft stable voice without treating silence as singing', t => {
+  const { feedback, element, sing } = fixture(t);
+  sing(440, 0.003);
+  assert.equal(feedback.compared, 0);
+  element('pitchSensitivity').value = 'quiet';
+  element('pitchSensitivity').dispatchEvent(new Event('change'));
+  sing(440, 0.003);
+  assert.ok(feedback.compared > 0);
+  assert.equal(element('pitchStatus').dataset.grade, 'close');
+});
+
+test('a missing microphone signal produces no grade or misleading low score', t => {
+  const { feedback, element } = fixture(t);
+  for (let block = 0; block < 55; block++) feedback.onSamples({samples:new Float32Array(2048),endTime:0.2+(block+1)*2048/48000});
+  assert.equal(feedback.compared, 0);
+  assert.equal(element('pitchStatus').dataset.grade, '');
+  assert.equal(element('pitchResult').textContent, '收音不足，暫不評分');
 });

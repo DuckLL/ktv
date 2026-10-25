@@ -14,6 +14,7 @@ from ktv.api.video import router as video_router
 from ktv.api.offset import router as offset_router
 from ktv.api.library import router as library_router
 from ktv.api.selection import router as selection_router
+from ktv.api.search import router as search_router
 
 
 @asynccontextmanager
@@ -33,6 +34,7 @@ app.include_router(video_router, prefix="/api")
 app.include_router(offset_router, prefix="/api")
 app.include_router(library_router, prefix="/api")
 app.include_router(selection_router, prefix="/api")
+app.include_router(search_router, prefix="/api")
 
 STATIC_DIR = Path(__file__).parent / "static"
 # Revalidate pages and modules with their ETag on every load, so a deploy never
