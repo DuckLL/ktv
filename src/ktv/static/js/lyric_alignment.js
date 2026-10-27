@@ -51,19 +51,3 @@ export function suggestLyricOffset(lines, reference, offset = 0) {
   }
   return { offset: Math.round((offset - best.shift) * 100) / 100, matched: best.matched, total: starts.length };
 }
-
-export function retimeLyricLine(lines, index, time) {
-  if (!lines[index] || !Number.isFinite(time)) return lines;
-  const stamp = lines[index].time;
-  const before = lines.filter(line => line.time < stamp).at(-1)?.time ?? -0.01;
-  const after = lines.find(line => line.time > stamp)?.time ?? Infinity;
-  const next = Math.round(Math.max(before + 0.01, Math.min(after - 0.01, time, 3600)) * 100) / 100;
-  return lines.map(line => line.time === stamp ? { ...line, time: Math.max(0, next) } : { ...line });
-}
-
-export function serializeLrc(lines) {
-  return lines.map(line => {
-    const cents = Math.round(Math.max(0, line.time) * 100);
-    return `[${String(Math.floor(cents / 6000)).padStart(2, '0')}:${String(Math.floor(cents / 100) % 60).padStart(2, '0')}.${String(cents % 100).padStart(2, '0')}]${line.text}`;
-  }).join('\n');
-}

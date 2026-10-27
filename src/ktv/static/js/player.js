@@ -2,7 +2,8 @@ import { parseLrc, findActiveIndex, getNavigationTime, rankLyricResults } from '
 import { SynchronizedAudioPlayer } from '/static/js/audio_player.js';
 import { VideoAudioSync } from '/static/js/video_sync.js';
 import { PitchFeedback } from '/static/js/pitch_feedback.js';
-import { suggestLyricOffset, retimeLyricLine, serializeLrc } from '/static/js/lyric_alignment.js';
+import { suggestLyricOffset } from '/static/js/lyric_alignment.js';
+import { loadPracticeSettings, savePracticeSettings } from '/static/js/practice_settings.js';
 import {
   calculateMixVolumes,
   formatVolumePercent,
@@ -33,7 +34,6 @@ let lrcLines = [];
 let activeIdx = -1;
 let selectedLrcId = null;
 let offsetSeconds = 0;
-let selectedItem = null;
 let selectionRevision = 0;
 let selectionSave = Promise.resolve();
 
@@ -128,6 +128,12 @@ video.addEventListener('timeupdate', () => syncLyrics(videoSync.currentTime));
 // ── Offset controls ───────────────────────────────────
 const offsetValueEl = document.getElementById('offsetValue');
 const offsetSavedEl = document.getElementById('offsetSaved');
+const autoLyricAlignment = document.getElementById('autoLyricAlignment');
+autoLyricAlignment.checked = loadPracticeSettings().autoLyricAlignment !== false;
+autoLyricAlignment.addEventListener('change', () => {
+  savePracticeSettings({ autoLyricAlignment: autoLyricAlignment.checked });
+  if (autoLyricAlignment.checked) alignLyrics();
+});
 const offsetTimers = new Map();
 const pendingOffsets = new Map();
 let offsetSave = Promise.resolve();
@@ -371,10 +377,10 @@ document.addEventListener('keydown', (e) => {
       setVolume(masterVolume - 0.1);
       break;
     case '[':
-      setOffset(offsetSeconds - 0.1);
+      setOffset(offsetSeconds - 0.5);
       break;
     case ']':
-      setOffset(offsetSeconds + 0.1);
+      setOffset(offsetSeconds + 0.5);
       break;
   }
 });
@@ -445,7 +451,6 @@ async function selectLyrics(item, clickedEl) {
   if (revision !== selectionRevision) return;
 
   selectedLrcId = id;
-  selectedItem = item;
   lrcLines = syncedLyrics ? parseLrc(syncedLyrics) : [];
   activeIdx = -1;
   renderLyrics();
@@ -491,7 +496,6 @@ async function restoreSelection() {
     if (revision !== selectionRevision) return null;
 
     selectedLrcId = saved.lrclib_id;
-    selectedItem = { id: saved.lrclib_id, trackName: saved.track_name, artistName: saved.artist_name };
     lrcLines = saved.synced_lyrics ? parseLrc(saved.synced_lyrics) : [];
     document.getElementById('lyricsSelectionSummary').textContent = saved.track_name || '已選擇';
     renderLyrics();
@@ -517,7 +521,6 @@ searchInput.addEventListener('keydown', (e) => {
 
 let lyricSearchRevision = 0;
 const autoStatus = document.getElementById('lyricsAutoStatus');
-const alignmentStatus = document.getElementById('lyricAlignmentStatus');
 
 function songDuration() {
   const duration = Number.isFinite(audioPlayer.duration) ? audioPlayer.duration : video.duration;
@@ -544,7 +547,7 @@ async function autoFindLyrics() {
       autoStatus.textContent = saved
         ? `已自動選用：${data.selected.artistName} — ${data.selected.trackName}`
         : '歌詞已選用，但儲存失敗，請重新選用或稍後重試。';
-      await alignLyrics(true);
+      await alignLyrics();
     } else {
       autoStatus.textContent = data.results?.length ? '找到候選歌詞，請確認歌曲版本。' : '尚未找到，請調整關鍵字搜尋。';
       if (!lrcLines.length) searchPanel.open = true;
@@ -554,41 +557,17 @@ async function autoFindLyrics() {
   }
 }
 
-async function alignLyrics(automatic = false) {
+async function alignLyrics() {
+  if (!autoLyricAlignment.checked || !lrcLines.length) return;
   const selection = selectionRevision;
   const offset = offsetSeconds;
   const reference = await referenceReady;
-  if (selection !== selectionRevision || offset !== offsetSeconds) return;
+  if (!autoLyricAlignment.checked || selection !== selectionRevision || offset !== offsetSeconds) return;
   const suggestion = suggestLyricOffset(lrcLines, reference, offset);
-  if (!suggestion) {
-    if (!automatic) alignmentStatus.textContent = '未找到明確的整體時間差；可用此句微調。';
-    return;
-  }
-  setOffset(suggestion.offset);
-  alignmentStatus.textContent = `已依 ${suggestion.matched} 句起音校正；請聽看看，可再微調。`;
+  if (suggestion) setOffset(suggestion.offset);
 }
 
-document.getElementById('alignLyrics').addEventListener('click', () => alignLyrics());
 document.getElementById('lyricsAutoRetry').addEventListener('click', () => autoFindLyrics());
-
-async function editCurrentLine(delta) {
-  if (activeIdx < 0 || !selectedItem || !lrcLines[activeIdx]?.text) {
-    alignmentStatus.textContent = '播放到想調整的歌詞後，再校正此句。';
-    return;
-  }
-  const revision = selectionRevision;
-  const time = delta === null ? videoSync.currentTime + offsetSeconds : lrcLines[activeIdx].time + delta;
-  lrcLines = retimeLyricLine(lrcLines, activeIdx, time);
-  activeIdx = -1;
-  renderLyrics();
-  syncLyrics(videoSync.currentTime);
-  const saved = await saveSelection(selectedItem, serializeLrc(lrcLines));
-  if (revision !== selectionRevision) return;
-  alignmentStatus.textContent = saved ? '已儲存此句時間。' : '此句已調整，但儲存失敗，請再試一次。';
-}
-document.getElementById('lyricLineEarlier').addEventListener('click', () => editCurrentLine(-0.1));
-document.getElementById('lyricLineLater').addEventListener('click', () => editCurrentLine(0.1));
-document.getElementById('lyricLineNow').addEventListener('click', () => editCurrentLine(null));
 
 // ── Init ──────────────────────────────────────────────
 async function init() {

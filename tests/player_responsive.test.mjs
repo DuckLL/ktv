@@ -17,7 +17,7 @@ test('player page has mobile layout rules for narrow viewports', () => {
   assert.match(css, /\.sidebar\s*\{[\s\S]*border-left:\s*none/);
   assert.match(css, /\.video-controls\s*\{[\s\S]*align-items:\s*stretch/);
   assert.match(css, /\.audio-toggle\s*\{[\s\S]*width:\s*100%/);
-  assert.match(css, /\.offset-bar\s*\{[\s\S]*flex-wrap:\s*wrap/);
+  assert.match(css, /\.offset-bar\s*\{[\s\S]*flex-wrap:\s*nowrap/);
   assert.match(css, /\.lyrics-stage\s*\{[\s\S]*max-height:\s*18rem/);
 });
 

@@ -101,9 +101,6 @@ body {
 .song-add-button:disabled { color: #a8a8be; cursor: default; }
 .lyrics-auto-button { font-size: 0.8rem; margin: 0.5rem 0; }
 .lyrics-auto-status { padding: 0.5rem 0.75rem 0; }
-.lyric-alignment-controls { display: flex; flex-wrap: wrap; gap: 0.5rem; padding: 0.5rem 1rem 0.75rem; }
-.lyric-alignment-controls .offset-btn { min-height: 44px; }
-details:not([open]) > .lyric-alignment-controls { display: none; }
 .practice-hint { color: #a8a8be; font-size: 0.75rem; line-height: 1.5; }
 .practice-select { display: inline-flex; align-items: center; gap: 0.4rem; min-height: 44px; max-width: 100%; color: #a8a8be; }
 .practice-select select { min-width: 0; max-width: 100%; padding: 0.4rem; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font: inherit; }
@@ -891,6 +888,24 @@ details:not([open]) > .sidebar-content { display: none; }
   margin-left: auto;
 }
 
+.offset-auto-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  flex-shrink: 0;
+  color: #a8a8be;
+  font-size: 0.75rem;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.offset-auto-toggle input {
+  width: 0.875rem;
+  height: 0.875rem;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
 .offset-saved {
   font-size: 0.7rem;
   color: var(--neon);
@@ -904,6 +919,10 @@ details:not([open]) > .sidebar-content { display: none; }
 ::-webkit-scrollbar { width: 5px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+@media (max-width: 1000px) {
+  .offset-label { display: none; }
+}
 
 @media (max-width: 760px) {
   .player-layout {
@@ -1032,29 +1051,36 @@ details:not([open]) > .sidebar-content { display: none; }
   }
 
   .offset-bar {
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
     align-items: stretch;
-    padding: 0.55rem 0.75rem;
-  }
-
-  .offset-label {
-    display: none;
+    gap: 0.25rem;
+    padding: 0.55rem 0.5rem;
   }
 
   .offset-value {
-    flex: 1 1 auto;
-    min-width: 3.75rem;
+    flex: 1 0 auto;
+    min-width: 3.25rem;
     align-self: center;
   }
 
   .offset-btn {
-    flex: 1 1 auto;
-    padding: 0.35rem 0.5rem;
+    flex: 0 0 auto;
+    padding: 0.35rem;
     min-height: 44px;
   }
 
   .offset-btn.reset {
     margin-left: 0;
+  }
+
+  .offset-auto-toggle { min-height: 44px; }
+
+  .offset-saved {
+    min-width: 0;
+    align-self: center;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .sidebar {
