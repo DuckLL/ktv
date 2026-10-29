@@ -182,6 +182,14 @@ async function settingsTab(page, name) {
         window.__testTrackGains.push(gain);
         return gain;
       };
+      window.__testPitchMarkers = {};
+      const arc = CanvasRenderingContext2D.prototype.arc;
+      CanvasRenderingContext2D.prototype.arc = function(x, y, ...rest) {
+        if (this.canvas.id === 'pitchCanvas' && ['#ff3cac', '#00d4ff'].includes(this.fillStyle)) {
+          window.__testPitchMarkers[this.fillStyle] = { x, y, at: performance.now() };
+        }
+        return arc.call(this, x, y, ...rest);
+      };
     });
     const page = await context.newPage();
     page.setDefaultTimeout(15000);
@@ -219,6 +227,11 @@ async function settingsTab(page, name) {
     await page.locator('#mainVideo').focus();
     await page.keyboard.press('Space');
     await page.waitForFunction(() => document.querySelector('#pitchSungNote').textContent === 'A4' && document.querySelector('#pitchStatus').dataset.grade === 'close');
+    await page.waitForFunction(() => {
+      const target = window.__testPitchMarkers['#ff3cac'];
+      const singer = window.__testPitchMarkers['#00d4ff'];
+      return target && singer && performance.now() - singer.at < 500 && Math.abs(target.at - singer.at) < 1 && Math.abs(target.x - singer.x) < 1 && Math.abs(target.y - singer.y) < 2;
+    });
     await assertNativeVolume(page);
     await page.locator('#mainVideo').focus();
     await page.keyboard.press('Space');

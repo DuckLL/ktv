@@ -6,6 +6,7 @@
 npm install --prefix .venv/browser-tools playwright
 node .venv/browser-tools/node_modules/playwright/cli.js install chromium
 NODE_PATH="$PWD/.venv/browser-tools/node_modules" node tests/browser/practice.cjs
+NODE_PATH="$PWD/.venv/browser-tools/node_modules" node tests/browser/pitch_viewport.cjs
 ```
 
 測試工具安裝在磁碟上的虛擬環境目錄。部分環境的 `/tmp` 是記憶體檔案系統，將瀏覽器或 FFmpeg 安裝在其中會佔用人聲分離所需的記憶體。
@@ -29,3 +30,5 @@ NODE_PATH="$PWD/.venv/browser-tools/node_modules" node tests/browser/practice.cj
 寬螢幕另檢查聲音設定在 MV 右側、1366×900 時影片高度約 396 px、原生播放／暫停與左右逐句跳轉，以及收起 MV 後保留精簡原生播放器。
 
 截圖預設存到 `/tmp/ktv-browser-review`；可用 `KTV_BROWSER_ARTIFACTS` 指定位置。自訂 Python 執行檔可設 `KTV_TEST_PYTHON`，連接埠可設 `KTV_TEST_PORT`。Linux 測試機需要 Chromium 使用的系統函式庫及中文字型。
+
+`pitch_viewport.cjs` 另以實際播放器與 canvas、固定音高和時鐘檢查動態音域：70 音分差距須依同一刻度準確繪製，顫音不移動座標，大幅旋律變化平滑移動及縮放，跳轉與升降 key 立即對準目的地，休止資料維持空白。包含 1366／390 px 截圖，預設位於 `/tmp/ktv-pitch-viewport-review`。

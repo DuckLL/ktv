@@ -1,6 +1,7 @@
 import { PitchDetector } from '/static/vendor/pitchy/pitchy.js';
 import { captureSongTime, hzToMidi, midiToNote, pitchChartRange, pitchDifferenceCents, pitchFeedback, referenceAt, transposeMidi, LivePitchTracker, PRACTICE_MODES, MIC_SENSITIVITY, matchReference } from '/static/js/pitch_math.js';
 import { loadPracticeSettings, savePracticeSettings } from '/static/js/practice_settings.js';
+import { currentPitchPoint, localPitchBounds, PitchViewport } from '/static/js/pitch_viewport.js';
 
 const WINDOW_SIZE = 4096;
 const PAST_SECONDS = 2;
@@ -34,6 +35,7 @@ export class PitchFeedback {
     this.tracker = new LivePitchTracker();
     this.lastStartedAt = null;
     this.chartRange = { min: 57, max: 81 };
+    this.viewport = new PitchViewport();
     this.reference = null;
     this.stream = null;
     this.source = null;
@@ -66,7 +68,7 @@ export class PitchFeedback {
       document.querySelector('.player-main').classList.toggle('pitch-visible', this.panel.open);
     });
     window.addEventListener('pagehide', () => this.stopMic());
-    requestAnimationFrame(() => this.drawLoop());
+    requestAnimationFrame(time => this.drawLoop(time));
   }
 
   get targetSemitones() {
@@ -77,6 +79,7 @@ export class PitchFeedback {
     if (!this.reference) return;
     const range = pitchChartRange(this.reference.midi);
     this.chartRange = { min: range.min + this.targetSemitones, max: range.max + this.targetSemitones };
+    this.viewport.reset();
   }
 
   async loadReference() {
@@ -203,7 +206,7 @@ export class PitchFeedback {
     const targetMidi = matchReference(this.reference, songTime, sungMidi, this.targetSemitones, mode.seconds);
     const cents = sungMidi !== null && targetMidi !== null
       ? pitchDifferenceCents(sungMidi, targetMidi) : null;
-    this.history.push({ time: songTime, midi: sungMidi, cents });
+    this.history.push({ time: songTime, receivedAt: this.audio.currentTime, midi: sungMidi, cents });
     this.history = this.history.filter(point => point.time >= songTime - 8);
 
     if (cents !== null) {
@@ -224,12 +227,12 @@ export class PitchFeedback {
     }
   }
 
-  drawLoop() {
-    if (this.panel.open && this.reference && this.ctx) this.draw();
-    requestAnimationFrame(() => this.drawLoop());
+  drawLoop(time) {
+    if (this.panel.open && this.reference && this.ctx) this.draw(time / 1000);
+    requestAnimationFrame(next => this.drawLoop(next));
   }
 
-  draw() {
+  draw(frameTime = performance.now() / 1000) {
     const width = this.canvas.clientWidth;
     const height = this.canvas.clientHeight;
     if (!width || !height) return;
@@ -242,6 +245,8 @@ export class PitchFeedback {
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, width, height);
     const now = this.audio.currentTime;
+    const bounds = localPitchBounds(this.reference, now, this.targetSemitones, this.history);
+    const range = this.viewport.update(bounds, now, frameTime, this.chartRange);
     const target = referenceAt(this.reference, now) ?? referenceAt(this.reference, now + 0.2);
     const targetLabel = midiToNote(transposeMidi(target, this.targetSemitones));
     if (this.targetNote.textContent !== targetLabel) this.targetNote.textContent = targetLabel;
@@ -250,7 +255,7 @@ export class PitchFeedback {
     const plotLeft = 42;
     const plotWidth = width - plotLeft - 8;
     const x = t => plotLeft + (t - start) / (PAST_SECONDS + FUTURE_SECONDS) * plotWidth;
-    const y = midi => (this.chartRange.max - midi) / (this.chartRange.max - this.chartRange.min) * height;
+    const y = midi => (range.max - midi) / (range.max - range.min) * height;
 
     ctx.lineWidth = 1;
     ctx.strokeStyle = '#303046';
@@ -258,14 +263,15 @@ export class PitchFeedback {
     ctx.textAlign = 'left';
     ctx.textBaseline = 'middle';
     let lastLabelY = Infinity;
-    for (let note = Math.ceil(this.chartRange.min); note <= this.chartRange.max; note++) {
-      if (![0, 4, 7, 11].includes(((note % 12) + 12) % 12)) continue;
+    for (let note = Math.ceil(range.min); note <= range.max; note++) {
       const py = y(note);
+      const natural = [0, 2, 4, 5, 7, 9, 11].includes(((note % 12) + 12) % 12);
+      ctx.strokeStyle = natural ? '#303046' : '#222232';
       ctx.beginPath();
       ctx.moveTo(plotLeft, py);
       ctx.lineTo(width, py);
       ctx.stroke();
-      if (py >= 10 && py <= height - 10 && lastLabelY - py >= 14) {
+      if (natural && py >= 10 && py <= height - 10 && lastLabelY - py >= 14) {
         ctx.fillStyle = '#a8a8be';
         ctx.fillText(midiToNote(note), 7, py);
         lastLabelY = py;
@@ -335,6 +341,38 @@ export class PitchFeedback {
       connected = true;
     }
     ctx.stroke();
+    const latest = currentPitchPoint(this.history, now);
+    if (this.stream && this.audio.playing && latest) {
+      const px = x(latest.time);
+      const sungY = Math.max(4, Math.min(height - 4, y(latest.midi)));
+      const marker = (midi, color, radius) => {
+        const py = y(midi);
+        ctx.fillStyle = color;
+        ctx.beginPath();
+        if (py < 4 || py > height - 4) {
+          const edge = py < 4 ? 1 : height - 1;
+          const inward = py < 4 ? 7 : height - 7;
+          ctx.moveTo(px, edge);
+          ctx.lineTo(px - 4, inward);
+          ctx.lineTo(px + 4, inward);
+          ctx.closePath();
+        } else {
+          ctx.arc(px, py, radius, 0, 2 * Math.PI);
+        }
+        ctx.fill();
+      };
+      if (Number.isFinite(latest.cents)) {
+        const targetY = Math.max(4, Math.min(height - 4, y(latest.midi - latest.cents / 100)));
+        ctx.strokeStyle = '#c2c4d8';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(px, targetY);
+        ctx.lineTo(px, sungY);
+        ctx.stroke();
+        marker(latest.midi - latest.cents / 100, '#ff3cac', 3.5);
+      }
+      marker(latest.midi, '#00d4ff', 4);
+    }
     ctx.restore();
   }
 }

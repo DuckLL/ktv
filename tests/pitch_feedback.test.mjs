@@ -105,3 +105,17 @@ test('a missing microphone signal produces no grade or misleading low score', t 
   assert.equal(element('pitchStatus').dataset.grade, '');
   assert.equal(element('pitchResult').textContent, '收音不足，暫不評分');
 });
+
+test('dynamic chart magnifies pitch differences without changing the singing or grade', t => {
+  const { feedback, element, sing } = fixture(t);
+  sing(466.1637615);
+  const history = structuredClone(feedback.history);
+  const compared = feedback.compared;
+  const grade = element('pitchStatus').textContent;
+  feedback.draw(1);
+  assert.ok(feedback.viewport.span <= 12);
+  assert.deepEqual(feedback.history, history);
+  assert.equal(feedback.compared, compared);
+  assert.equal(element('pitchStatus').textContent, grade);
+  assert.equal(element('pitchSungNote').textContent, 'A♯4');
+});
