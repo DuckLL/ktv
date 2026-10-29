@@ -11,6 +11,43 @@ import ktv.api.video as video
 
 
 class AudioApiRouteTests(unittest.IsolatedAsyncioTestCase):
+    async def test_prepared_video_keeps_range_requests_and_correct_content_type(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            directory = Path(tmp) / "song"
+            directory.mkdir()
+            source = directory / "video_only.webm"
+            source.write_bytes(b"original picture")
+            prepared = directory / "player.mp4"
+            prepared.write_bytes(b"prepared video")
+            app = FastAPI()
+            app.include_router(video.router)
+            with patch.object(video, "CACHE_DIR", Path(tmp)), patch.object(video, "touch", AsyncMock()), \
+                 patch.object(video, "playback_video", AsyncMock(return_value=prepared)) as prepare:
+                async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+                    response = await client.get("/video/song", headers={"Range": "bytes=0-3"})
+            self.assertEqual(response.status_code, 206)
+            self.assertEqual(response.headers["content-type"], "video/mp4")
+            self.assertEqual(response.content, b"prep")
+            prepare.assert_awaited_once_with(source)
+            self.assertEqual(source.read_bytes(), b"original picture")
+
+    async def test_missing_video_does_not_start_preparation(self):
+        with tempfile.TemporaryDirectory() as tmp, patch.object(video, "CACHE_DIR", Path(tmp)), \
+             patch.object(video, "playback_video", AsyncMock()) as prepare:
+            response = await video.serve_video("missing")
+        self.assertEqual(response.status_code, 404)
+        prepare.assert_not_called()
+
+    async def test_video_preparation_failure_returns_retryable_error(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            directory = Path(tmp) / "song"
+            directory.mkdir()
+            (directory / "video_only.webm").write_bytes(b"picture")
+            with patch.object(video, "CACHE_DIR", Path(tmp)), patch.object(video, "touch", AsyncMock()), \
+                 patch.object(video, "playback_video", AsyncMock(side_effect=RuntimeError("failed"))):
+                response = await video.serve_video("song")
+        self.assertEqual(response.status_code, 503)
+
     def test_routes_offer_original_and_accompaniment(self):
         paths = {route.path for route in video.router.routes}
         self.assertIn("/audio/{video_id}/instrumental", paths)

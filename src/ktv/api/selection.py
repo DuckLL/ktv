@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Response
 from pydantic import BaseModel
-from ktv.core.db import get_selection, set_selection
+from ktv.core.db import get_selection, set_selection, clear_selection, selection_was_cleared
 
 router = APIRouter()
 
@@ -16,6 +16,8 @@ class SelectionBody(BaseModel):
 async def get_selection_api(video_id: str):
     row = await get_selection(video_id)
     if not row:
+        if await selection_was_cleared(video_id):
+            return {"cleared": True}
         return Response(status_code=204)
     return row
 
@@ -27,3 +29,9 @@ async def set_selection_api(video_id: str, body: SelectionBody):
         body.track_name, body.artist_name, body.synced_lyrics,
     )
     return {"ok": True}
+
+
+@router.delete("/selection/{video_id}", status_code=204)
+async def clear_selection_api(video_id: str):
+    await clear_selection(video_id)
+    return Response(status_code=204)

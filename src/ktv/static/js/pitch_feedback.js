@@ -257,6 +257,7 @@ export class PitchFeedback {
     ctx.font = '11px system-ui, sans-serif';
     ctx.textAlign = 'left';
     ctx.textBaseline = 'middle';
+    let lastLabelY = Infinity;
     for (let note = Math.ceil(this.chartRange.min); note <= this.chartRange.max; note++) {
       if (![0, 4, 7, 11].includes(((note % 12) + 12) % 12)) continue;
       const py = y(note);
@@ -264,9 +265,10 @@ export class PitchFeedback {
       ctx.moveTo(plotLeft, py);
       ctx.lineTo(width, py);
       ctx.stroke();
-      if (py >= 10 && py <= height - 10) {
+      if (py >= 10 && py <= height - 10 && lastLabelY - py >= 14) {
         ctx.fillStyle = '#a8a8be';
         ctx.fillText(midiToNote(note), 7, py);
+        lastLabelY = py;
       }
     }
     ctx.strokeStyle = '#48485f';

@@ -6,33 +6,45 @@
   <title>KTV Player</title>
   <link rel="icon" href="/static/favicon.svg">
   <link rel="stylesheet" href="/static/css/style.css">
+  <link rel="stylesheet" href="/static/css/player_layout.css">
 </head>
-<body>
+<body class="player-page">
   <div class="player-layout">
 
     <!-- Header -->
     <header class="player-header">
+      <a class="mobile-back mobile-only" href="/" aria-label="返回歌曲庫">‹</a>
       <a class="player-logo" href="/">🎤 KTV</a>
-      <span class="player-title" id="playerTitle"></span>
-      <span class="player-artist" id="playerArtist"></span>
+      <div class="player-song">
+        <span class="player-title" id="playerTitle"></span>
+        <span class="player-artist" id="playerArtist"></span>
+      </div>
+      <button class="mobile-mv-toggle" id="mobileMvToggle" aria-label="收起 MV" aria-pressed="true"><span class="mv-toggle-short">MV</span><span class="mv-toggle-detail">顯示 MV</span></button>
       <a class="youtube-link" id="youtubeLink" target="_blank" rel="noopener noreferrer" aria-label="在 YouTube 開啟原影片" title="在 YouTube 開啟原影片" hidden>
         <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true" focusable="false">
           <path fill="currentColor" d="M23.5 6.2a3 3 0 0 0-2.1-2.1C19.5 3.6 12 3.6 12 3.6s-7.5 0-9.4.5A3 3 0 0 0 .5 6.2 31 31 0 0 0 0 12a31 31 0 0 0 .5 5.8 3 3 0 0 0 2.1 2.1c1.9.5 9.4.5 9.4.5s7.5 0 9.4-.5a3 3 0 0 0 2.1-2.1A31 31 0 0 0 24 12a31 31 0 0 0-.5-5.8ZM9.6 15.6V8.4l6.3 3.6-6.3 3.6Z"/>
         </svg>
+        <span class="video-action-label">YouTube</span>
       </a>
+      <button class="mobile-adjust mobile-only" id="mobileSettingsOpen" aria-label="練唱調整" aria-haspopup="dialog" aria-controls="mobileSettings">
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M4 7h16M4 17h16"/><circle cx="9" cy="7" r="3"/><circle cx="15" cy="17" r="3"/></svg><span class="mobile-settings-label">調整</span>
+      </button>
     </header>
 
     <!-- Main: video + lyrics -->
     <main class="player-main">
+      <section class="mv-stage has-mv" id="mvStage" aria-label="影片與播放">
       <div class="video-wrap">
         <video id="mainVideo" controls playsinline></video>
       </div>
+      <div id="mobilePlaybackStatus" role="status" aria-live="polite"></div>
+      </section>
 
       <div class="video-controls">
         <div class="lyric-navigation" aria-label="播放跳轉">
-          <button class="navigation-btn" id="previousLine" aria-label="快退 5 秒">← 退 5 秒</button>
+          <button class="navigation-btn" id="previousLine" aria-label="快退 5 秒"><svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true"><path d="M5 5h2v14H5zm3 7 11-7v14z"/></svg><span id="previousLineLabel">← 退 5 秒</span></button>
           <span class="navigation-label" id="navigationLabel">播放跳轉</span>
-          <button class="navigation-btn" id="nextLine" aria-label="快進 5 秒">進 5 秒 →</button>
+          <button class="navigation-btn" id="nextLine" aria-label="快進 5 秒"><svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true"><path d="M17 5h2v14h-2zM5 5l11 7-11 7z"/></svg><span id="nextLineLabel">進 5 秒 →</span></button>
         </div>
         <span class="kbd-hint" id="keyboardHint">← → 前後 5 秒　↑ ↓ 音量</span>
       </div>
@@ -58,8 +70,10 @@
             >
             <span class="volume-value" id="volumeValue" aria-live="polite">80%</span>
           </label>
-          <label class="key-control" for="keySelect">
-            <span>升降 key</span>
+          <div class="key-control">
+            <label for="keySelect">升降 key</label>
+            <div class="key-stepper">
+            <button class="mobile-only key-step" id="mobileKeyDown" aria-label="降低半音">−</button>
             <select id="keySelect" aria-label="歌曲升降 key，每格半音，速度不變">
               <option value="-6">−6 半音</option>
               <option value="-5">−5 半音</option>
@@ -75,7 +89,9 @@
               <option value="5">+5 半音</option>
               <option value="6">+6 半音</option>
             </select>
-          </label>
+            <button class="mobile-only key-step" id="mobileKeyUp" aria-label="升高半音">+</button>
+            </div>
+          </div>
           <div class="audio-toggle" aria-label="音軌混音">
             <button class="audio-toggle-btn active" id="btnInstrumental">🎵 伴唱</button>
             <label class="mix-control" for="vocalMixSlider">
@@ -142,9 +158,23 @@
           </div>
         </div>
       </details>
-      <div class="lyrics-stage" id="lyricsStage">
-        <div class="lyrics-placeholder">載入歌詞中…</div>
-      </div>
+      <section class="mobile-live-sound mobile-only" id="mobileLiveSound" aria-label="播放聲音調整">
+        <div id="mobileMixSettings"></div>
+      </section>
+      <div class="desktop-functional-controls desktop-only" id="desktopLyricSettings"></div>
+      <div class="mobile-lyric-settings mobile-only" id="mobileLyricSettings" aria-label="歌詞時間差"></div>
+      <section class="lyrics-workspace" id="lyricsWorkspace" aria-label="完整歌詞與跳轉">
+        <div class="lyric-rail" id="mobilePreviousRail"></div>
+        <div class="lyrics-stage" id="lyricsStage">
+          <div class="lyrics-placeholder">載入歌詞中…</div>
+        </div>
+        <div class="lyric-rail" id="mobileNextRail"></div>
+      </section>
+      <div class="desktop-functional-controls desktop-only" id="desktopPitchSettings"></div>
+      <section class="mobile-pitch-card" id="mobilePitchCard" aria-label="原唱與你的音高">
+        <div class="mobile-pitch-head" id="mobilePitchHead"><span id="mobilePitchLabel">原唱音高</span></div>
+        <p class="mobile-pitch-message" id="mobilePitchMessage" role="status"></p>
+      </section>
 
       <!-- Lyrics time offset controls -->
       <details class="offset-settings" id="offsetSettings" open>
@@ -153,16 +183,15 @@
           <span class="panel-preview" id="offsetSummary">+0.00 s</span>
           <span class="panel-chevron" aria-hidden="true">⌄</span>
         </summary>
+        <h3 class="mobile-section-title">歌詞時間差</h3>
         <div class="offset-bar" id="offsetBar">
           <span class="offset-label">歌詞時間差</span>
-          <button class="offset-btn" id="offsetMinus">−0.5s</button>
+          <button class="offset-btn" id="offsetMinus" data-offset-step="-0.5">−0.5s</button>
+          <button class="offset-btn" id="offsetFineMinus" data-offset-step="-0.2">−0.2s</button>
           <span class="offset-value" id="offsetValue">0.00 s</span>
-          <button class="offset-btn" id="offsetPlus">+0.5s</button>
+          <button class="offset-btn" id="offsetFinePlus" data-offset-step="0.2">+0.2s</button>
+          <button class="offset-btn" id="offsetPlus" data-offset-step="0.5">+0.5s</button>
           <button class="offset-btn reset" id="offsetReset">重置</button>
-          <label class="offset-auto-toggle">
-            <input id="autoLyricAlignment" type="checkbox" role="switch" checked>
-            自動校正
-          </label>
           <span class="offset-saved" id="offsetSaved">已儲存</span>
         </div>
       </details>
@@ -196,7 +225,32 @@
       </details>
     </aside>
 
+    <aside class="settings-sidebar" id="desktopSettings" aria-label="聲音與歌詞版本">
+      <div class="desktop-functional-controls desktop-only" id="desktopSoundSettings" role="group" aria-label="聲音設定"><h3 class="desktop-sound-title">聲音</h3></div>
+    </aside>
+
   </div>
+
+  <dialog class="mobile-settings" id="mobileSettings" aria-labelledby="mobileSettingsTitle">
+    <div class="mobile-sheet-handle" aria-hidden="true"></div>
+    <div class="player-settings-content" id="playerSettingsContent">
+    <div class="mobile-sheet-head"><h2 id="mobileSettingsTitle">練唱調整</h2><button class="mobile-only" id="mobileSettingsClose" aria-label="關閉調整">×</button></div>
+    <div class="mobile-settings-tabs" role="tablist" aria-label="設定分類">
+      <button id="mobileTabSound" role="tab" aria-controls="mobileSoundPanel" aria-selected="true" data-tab="sound">播放</button>
+      <button id="mobileTabLyrics" role="tab" aria-controls="mobileLyricsPanel" aria-selected="false" tabindex="-1" data-tab="lyrics">歌詞</button>
+      <button id="mobileTabPitch" role="tab" aria-controls="mobilePitchPanel" aria-selected="false" tabindex="-1" data-tab="pitch">音準</button>
+    </div>
+    <section class="mobile-settings-panel" id="mobileSoundPanel" role="tabpanel" aria-labelledby="mobileTabSound"><h3 class="settings-section-title desktop-only">聲音</h3><div class="mobile-video-actions" id="mobileVideoActions" role="group" aria-label="影片操作"></div></section>
+    <section class="mobile-settings-panel" id="mobileLyricsPanel" role="tabpanel" aria-labelledby="mobileTabLyrics" hidden>
+      <div class="mobile-lyric-version"><div>歌詞版本<small id="mobileVersionName">尚未選擇</small></div><div class="lyric-version-actions"><button id="mobileChangeLyrics" aria-controls="lyricsSearchPanel" aria-expanded="false">更換</button><button id="lyricsClearMemory" title="清除此歌曲的歌詞版本與時間差記憶" disabled>清除記憶</button></div></div>
+    </section>
+    <section class="mobile-settings-panel" id="mobilePitchPanel" role="tabpanel" aria-labelledby="mobileTabPitch" hidden>
+      <h3 class="settings-section-title desktop-only">音準設定</h3>
+      <label class="mobile-chart-toggle" for="mobilePitchVisible">顯示音高圖<input id="mobilePitchVisible" type="checkbox" role="switch" checked></label>
+      <details class="mobile-pitch-advanced" id="mobilePitchAdvanced"><summary>進階設定</summary><div class="pitch-advanced-content" id="pitchAdvancedContent"></div></details>
+    </section>
+    </div>
+  </dialog>
 
   <script type="module" src="/static/js/player.js"></script>
 </body>

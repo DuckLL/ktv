@@ -27,6 +27,10 @@ CREATE TABLE IF NOT EXISTS selections (
     artist_name  TEXT,
     synced_lyrics TEXT
 );
+
+CREATE TABLE IF NOT EXISTS cleared_lyric_selections (
+    video_id TEXT PRIMARY KEY
+);
 """
 
 
@@ -161,4 +165,20 @@ async def set_selection(video_id: str, lrclib_id: str,
             "VALUES (?,?,?,?,?)",
             (video_id, str(lrclib_id), track_name, artist_name, synced_lyrics),
         )
+        await db.execute("DELETE FROM cleared_lyric_selections WHERE video_id=?", (video_id,))
+        await db.commit()
+
+
+async def selection_was_cleared(video_id: str) -> bool:
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute("SELECT 1 FROM cleared_lyric_selections WHERE video_id=?", (video_id,)) as cur:
+            return await cur.fetchone() is not None
+
+
+async def clear_selection(video_id: str):
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("DELETE FROM selections WHERE video_id=?", (video_id,))
+        await db.execute("DELETE FROM offsets WHERE video_id=?", (video_id,))
+        # Remember the explicit reset so reloading cannot silently select the wrong version again.
+        await db.execute("INSERT OR IGNORE INTO cleared_lyric_selections (video_id) VALUES (?)", (video_id,))
         await db.commit()

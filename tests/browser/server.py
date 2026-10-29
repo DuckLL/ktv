@@ -34,7 +34,7 @@ def create_media(root: Path) -> Path:
     ], check=True)
     subprocess.run([
         "ffmpeg", "-y", "-v", "error", "-f", "lavfi", "-i",
-        "color=c=0x171724:s=640x360:r=10:d=17", "-an", "-c:v", "libvpx-vp9",
+        "color=c=0x171724:s=640x480:r=10:d=17", "-an", "-c:v", "libvpx-vp9",
         "-b:v", "80k", str(directory / "video_only.webm"),
     ], check=True)
     contour = [

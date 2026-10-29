@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 const css = readFileSync(new URL('../src/ktv/static/css/style.css', import.meta.url), 'utf8');
+const layout = readFileSync(new URL('../src/ktv/static/css/player_layout.css', import.meta.url), 'utf8');
 
 function cssBlock(selector) {
   const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -18,7 +19,9 @@ test('player page has mobile layout rules for narrow viewports', () => {
   assert.match(css, /\.video-controls\s*\{[\s\S]*align-items:\s*stretch/);
   assert.match(css, /\.audio-toggle\s*\{[\s\S]*width:\s*100%/);
   assert.match(css, /\.offset-bar\s*\{[\s\S]*flex-wrap:\s*nowrap/);
-  assert.match(css, /\.lyrics-stage\s*\{[\s\S]*max-height:\s*18rem/);
+  assert.match(layout, /\.player-page\s*\{[^}]*height:\s*100dvh/);
+  assert.match(layout, /\.player-page\s+\.lyrics-stage\s*\{[^}]*min-height:\s*0/);
+  assert.match(layout, /\.settings-sidebar\s*\{[^}]*grid-column:\s*2/);
 });
 
 test('mobile controls can shrink without overflowing narrow screens', () => {

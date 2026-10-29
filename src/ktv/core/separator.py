@@ -3,6 +3,7 @@ import codecs
 import json
 import re
 import shutil
+import signal
 import sys
 from collections import deque
 from pathlib import Path
@@ -117,6 +118,8 @@ async def separate_vocals(video_id: str, progress_cb=None) -> Path:
     await asyncio.gather(relay_progress(proc.stderr, progress_cb, stderr_lines), proc.wait())
 
     if proc.returncode != 0:
+        if proc.returncode == -signal.SIGKILL:
+            raise RuntimeError("人聲分離被系統強制終止（SIGKILL），可能是記憶體不足，請稍後重試。")
         tail = "\n".join(list(stderr_lines)[-10:])
         raise RuntimeError(f"demucs exited with code {proc.returncode}:\n{tail}")
 

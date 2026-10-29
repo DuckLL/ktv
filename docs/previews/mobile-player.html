@@ -1,0 +1,293 @@
+<!doctype html>
+<html lang="zh-TW">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>手機播放頁規劃預覽</title>
+  <style>
+    :root { color-scheme: dark; --bg:#0b0c12; --panel:#151721; --line:#292c3b; --text:#eff0f7; --muted:#959aad; --cyan:#64d9ee; --pink:#f65caa; }
+    * { box-sizing:border-box; }
+    body { margin:0; background:#08090d; color:var(--text); font:14px/1.5 system-ui,sans-serif; }
+    button,input { font:inherit; }
+    button { color:inherit; cursor:pointer; }
+    button:focus-visible,input:focus-visible,summary:focus-visible,a:focus-visible { outline:2px solid var(--cyan); outline-offset:3px; }
+    button { border:0; background:none; }
+    [hidden] { display:none !important; }
+    .player { max-width:430px; height:100dvh; margin:auto; display:flex; flex-direction:column; background:var(--bg); overflow:hidden; }
+    .top { height:56px; flex:none; display:flex; align-items:center; gap:10px; padding:6px 14px; border-bottom:1px solid #ffffff08; }
+    .back { min-width:44px; height:44px; font-size:25px; border:1px solid var(--line); border-radius:14px; }
+    .song { flex:1; min-width:0; }
+    .song strong { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:15px; font-weight:650; }
+    .song small { color:var(--muted); font-size:12px; }
+    .mv-toggle { min-width:44px; min-height:44px; border:1px solid var(--line); border-radius:14px; color:var(--muted); font-size:12px; }
+    .mv-toggle[aria-pressed="true"] { color:var(--cyan); border-color:var(--cyan); }
+    .stage { flex:1; min-height:0; display:flex; flex-direction:column; }
+    .video { position:relative; width:100%; aspect-ratio:16/9; flex:none; border-bottom:1px solid var(--line); background:radial-gradient(ellipse at 55% 90%,#4b294c 0,transparent 70%),linear-gradient(135deg,#202438,#10121a); display:grid; place-content:center; text-align:center; color:#b9bdd0; }
+    .video strong { display:block; font-size:26px; letter-spacing:5px; }
+    .video span { font-size:11px; color:var(--muted); }
+    .video-link,.fullscreen { position:absolute; right:10px; width:44px; height:44px; display:grid; place-items:center; border:1px solid #ffffff24; border-radius:12px; background:#0b0c1266; color:var(--text); text-decoration:none; }
+    .video-link { top:10px; font-size:20px; }
+    .fullscreen { bottom:10px; font-size:23px; }
+    .video:fullscreen { height:100%; aspect-ratio:auto; border:0; }
+    .pitch { position:relative; flex:none; margin:0 18px 12px; padding:4px 12px 0; border:1px solid var(--line); border-radius:14px; background:#10121b; }
+    .pitch-head { display:flex; align-items:center; gap:6px; font-size:11px; color:var(--muted); }
+    .dot { width:5px; height:5px; border-radius:50%; background:var(--cyan); }
+    .legend { margin-left:auto; display:flex; gap:12px; }
+    .target { color:var(--pink); }.live { color:var(--cyan); }
+    .stop { min-height:44px; padding:0 0 0 8px; font-size:11px; color:var(--text); }
+    .pitch svg { display:block; width:100%; height:clamp(40px,7dvh,64px); }
+    .lyrics { flex:1; min-height:0; overflow:auto; padding:0 24px; display:flex; flex-direction:column; justify-content:safe center; scrollbar-width:none; }
+    .lyrics button { padding:8px 0; text-align:left; flex:none; min-height:44px; font-size:clamp(17px,4.8vw,19px); font-weight:580; line-height:1.65; color:#686d82; transition:color .2s; }
+    .lyrics button:not(.active):not(.near) { display:none; }
+    .lyrics button.near { color:#a5a9bb; }
+    .lyrics button.active { color:var(--text); font-size:clamp(21px,5.8vw,25px); font-weight:700; }
+    .lyrics button.active::before { content:""; display:block; width:26px; height:3px; background:var(--pink); border-radius:3px; margin-bottom:13px; }
+    .transport { flex:none; padding:10px 22px max(14px,env(safe-area-inset-bottom)); background:linear-gradient(#10121a,#12141e); border-top:1px solid var(--line); }
+    .timeline { display:flex; align-items:center; gap:10px; font-size:10px; font-variant-numeric:tabular-nums; color:var(--muted); }
+    input[type="range"] { width:100%; min-width:0; height:24px; margin:0; accent-color:var(--cyan); }
+    .timeline input { height:20px; }
+    .controls { display:grid; grid-template-columns:1fr 1fr 1fr 1fr; gap:6px; align-items:center; margin-top:6px; }
+    .controls button { min-height:52px; min-width:44px; border-radius:16px; font-size:11px; color:#b6bbcc; }
+    .controls button svg { width:19px; height:19px; display:block; margin:0 auto 3px; }
+    .controls .play { height:52px; width:52px; justify-self:center; background:var(--cyan); color:#09212a; }
+    .controls .play svg { width:23px; height:23px; margin:0 auto; }
+    .controls .settings { background:#212431; color:var(--text); }
+    dialog { position:fixed; top:auto; bottom:0; width:min(100%,430px); max-width:430px; max-height:80dvh; margin:0 auto; padding:0; border:1px solid #3c4053; border-bottom:0; border-radius:25px 25px 0 0; background:#161923; color:var(--text); overflow:auto; box-shadow:0 -24px 70px #0005; }
+    dialog::backdrop { background:#0008; backdrop-filter:blur(3px); }
+    .handle { height:4px; width:34px; background:#424758; border-radius:8px; margin:10px auto 0; }
+    .sheet-head { display:flex; align-items:center; padding:4px 20px; gap:12px; }
+    .sheet-head h1 { flex:1; font-size:17px; margin:8px 0; }
+    .close { font-size:22px; min-width:44px; min-height:44px; color:var(--muted); }
+    .tabs { display:flex; gap:4px; margin:0 18px; background:#0c0f17; padding:4px; border-radius:12px; }
+    .tabs button { flex:1; min-height:44px; border-radius:9px; color:var(--muted); }
+    .tabs button[aria-selected="true"] { background:#2b3041; color:var(--text); }
+    .tab-content { padding:7px 20px 24px; }
+    .row { padding:15px 0; border-bottom:1px solid var(--line); }
+    .row:last-child { border-bottom:0; }
+    .row-head { display:flex; align-items:center; justify-content:space-between; gap:10px; min-height:28px; margin-bottom:8px; }
+    .row-head small { color:var(--muted); font-size:12px; }
+    .row-head label { cursor:pointer; }
+    .row small.hint { display:block; color:var(--muted); font-size:12px; margin-top:8px; }
+    .slider-labels { display:flex; justify-content:space-between; color:var(--muted); font-size:11px; }
+    .stepper { display:flex; align-items:center; gap:14px; }
+    .stepper button { border:1px solid #3a4055; border-radius:11px; min-height:44px; min-width:44px; font-size:20px; }
+    .stepper output { flex:1; text-align:center; font-weight:600; }
+    .change { min-height:44px; min-width:54px; border:1px solid var(--line); border-radius:10px; color:var(--cyan); }
+    .offset-controls { display:flex; align-items:center; justify-content:space-between; gap:4px; margin:10px -12px 0; white-space:nowrap; }
+    .offset-controls button { padding:0 6px; min-width:44px; min-height:44px; border:1px solid #33394c; border-radius:8px; font-size:12px; }
+    .offset-controls output { min-width:53px; text-align:center; color:var(--cyan); font-size:13px; font-weight:650; }
+    .offset-controls label { display:flex; align-items:center; gap:4px; min-height:44px; font-size:12px; }
+    input[type="checkbox"] { margin:0; width:16px; height:16px; accent-color:var(--cyan); }
+    .switch { appearance:none; width:38px !important; height:23px !important; background:#3f4454; border-radius:30px; padding:3px; transition:background .15s; cursor:pointer; }
+    .switch::before { content:""; display:block; width:17px; height:17px; border-radius:50%; background:#eef0f6; transition:transform .15s; }
+    .switch:checked { background:var(--cyan); }
+    .switch:checked::before { background:#08212a; transform:translateX(15px); }
+    .toggle-row { display:flex; align-items:center; justify-content:space-between; min-height:44px; gap:12px; cursor:pointer; }
+    .choices { display:flex; gap:6px; }
+    .choices button { flex:1; min-height:44px; background:#222634; border:1px solid transparent; border-radius:10px; color:var(--muted); }
+    .choices button.selected { color:var(--cyan); border-color:#64d9ee66; background:#64d9ee0b; }
+    details summary { min-height:44px; color:var(--muted); cursor:pointer; }
+    details .row { padding:8px 0; }
+    .search { display:flex; gap:8px; margin-top:12px; }
+    .search input { width:100%; min-width:0; min-height:44px; border:1px solid var(--line); border-radius:10px; background:#0e111a; color:var(--text); padding:0 10px; }
+    .result { width:100%; min-height:56px; text-align:left; padding:12px; border:1px solid var(--line); border-radius:10px; margin-top:10px; }
+    .result small { display:block; color:var(--muted); }
+    .toast { position:absolute; bottom:136px; left:50%; transform:translateX(-50%); border:1px solid #3b4357; border-radius:20px; padding:7px 15px; font-size:12px; background:#272d3e; white-space:nowrap; z-index:2; }
+    .preview-label { position:fixed; top:16px; left:16px; color:#72788d; font-size:11px; letter-spacing:1px; }
+    @media(max-width:600px) { .preview-label { display:none; } }
+    @media(max-height:650px) { .lyrics button { padding:6px 0; } .lyrics button.active::before { margin-bottom:7px; } .pitch { height:64px; margin:0 14px 6px; padding:4px 10px; } .pitch-head { height:20px; padding-right:48px; font-size:10px; } .pitch .stop { position:absolute; top:10px; right:8px; min-width:44px; padding:0; } .pitch svg { height:32px; width:calc(100% - 48px); } .pitch .legend { gap:8px; } .transport { padding-top:6px; } }
+  </style>
+</head>
+<body>
+  <div class="preview-label">手機播放頁 · 互動規劃預覽</div>
+  <main class="player">
+    <header class="top">
+      <button class="back" id="back" aria-label="返回歌曲庫" title="返回歌曲庫">‹</button>
+      <div class="song"><strong>練習曲</strong><small>KTV · 示意歌曲</small></div>
+      <button class="mv-toggle" id="mvToggle" aria-pressed="true" aria-controls="mv" aria-label="收起 MV">MV</button>
+    </header>
+    <section class="stage" aria-label="歌詞與練唱">
+      <div class="video" id="mv">
+        <div><strong>MV</strong><span>全寬影片 · 16:9</span></div>
+        <a class="video-link" href="https://www.youtube.com/" target="_blank" rel="noopener" aria-label="到 YouTube 看原影片">↗</a>
+        <button class="fullscreen" id="videoFullscreen" aria-label="MV 全螢幕" aria-pressed="false"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><path d="M8 3H3v5m13-5h5v5M3 16v5h5m8 0h5v-5"/></svg></button>
+      </div>
+      <div class="lyrics" id="lyrics" aria-label="同步歌詞">
+        <button data-line="0" class="near">窗邊的光慢慢亮起</button>
+        <button data-line="1" class="active" aria-current="true">讓歌聲陪我走一程</button>
+        <button data-line="2" class="near">把今天的心事唱給風聽</button>
+        <button data-line="3">下一個音符輕輕落下</button>
+        <button data-line="4">我們再唱一次</button>
+      </div>
+      <section class="pitch" id="pitch" aria-label="音高示意圖">
+        <div class="pitch-head"><span class="dot"></span>音高示意 <span class="legend"><span class="target">━ 目標</span><span class="live">━ 你</span></span><button class="stop" id="stopMic">關閉</button></div>
+        <svg viewBox="0 0 320 90" preserveAspectRatio="none" role="img" aria-label="目標與你的示意音高曲線">
+          <path d="M0 20H320M0 45H320M0 70H320" stroke="#252a3c" fill="none"/>
+          <path d="M0 65H42V47H87V56H112V31H162V40H215V22H267V36H320" stroke="#f65caa" stroke-width="3" fill="none"/>
+          <path d="M0 68Q18 61 42 64L47 49Q67 43 87 48L92 55L112 56L117 35Q140 30 162 35L167 41L215 39L220 26Q240 19 263 24" stroke="#64d9ee" stroke-width="2.4" fill="none"/>
+        </svg>
+      </section>
+    </section>
+    <footer class="transport">
+      <div class="timeline"><span id="time">1:24</span><input id="progress" type="range" min="0" max="240" value="84" aria-label="播放位置"><span>4:00</span></div>
+      <div class="controls">
+        <button id="previous" aria-label="上一句歌詞"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M5 5h2v14H5zm3 7 11-7v14z"/></svg>上一句</button>
+        <button class="play" id="play" aria-label="播放" aria-pressed="false"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="m8 5 11 7-11 7z"/></svg></button>
+        <button id="next" aria-label="下一句歌詞"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M17 5h2v14h-2zM5 5l11 7-11 7z"/></svg>下一句</button>
+        <button class="settings" id="settings" aria-haspopup="dialog" aria-controls="adjustments"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M4 7h16M4 17h16"/><circle cx="9" cy="7" r="3" fill="#212431"/><circle cx="15" cy="17" r="3" fill="#212431"/></svg>調整</button>
+      </div>
+    </footer>
+  </main>
+
+  <dialog id="adjustments" aria-labelledby="sheetTitle">
+    <div class="handle" aria-hidden="true"></div>
+    <div class="sheet-head"><h1 id="sheetTitle">練唱調整</h1><button class="close" id="close" aria-label="關閉調整">×</button></div>
+    <div class="tabs" role="tablist" aria-label="設定分類">
+      <button id="tabSound" role="tab" aria-selected="true" aria-controls="sound">聲音</button>
+      <button id="tabLyrics" role="tab" aria-selected="false" aria-controls="lyricSettings" tabindex="-1">歌詞</button>
+      <button id="tabPitch" role="tab" aria-selected="false" aria-controls="pitchSettings" tabindex="-1">音準</button>
+    </div>
+    <section class="tab-content" id="sound" role="tabpanel" aria-labelledby="tabSound">
+      <div class="row"><div class="row-head"><label for="guide">原唱導唱</label><small id="guideValue">20%</small></div><input id="guide" type="range" min="0" max="100" value="20"><div class="slider-labels"><span>純伴唱</span><span>完整原唱</span></div></div>
+      <div class="row"><div class="row-head"><label for="volume">音量</label><small id="volumeValue">80%</small></div><input id="volume" type="range" min="0" max="100" value="80"></div>
+      <div class="row"><div class="row-head"><span>升降 key</span><small>速度不變</small></div><div class="stepper"><button id="keyDown" aria-label="降低半音">−</button><output id="key">原調</output><button id="keyUp" aria-label="升高半音">+</button></div></div>
+    </section>
+    <section class="tab-content" id="lyricSettings" role="tabpanel" aria-labelledby="tabLyrics" hidden>
+      <div class="row"><div class="row-head"><span>歌詞版本<br><small id="version">KTV · 練習曲</small></span><button class="change" id="changeLyrics" aria-expanded="false" aria-controls="lyricSearch">更換</button></div><div id="lyricSearch" hidden><div class="search"><input aria-label="搜尋歌詞版本" placeholder="歌名或歌手" value="練習曲"><button class="change" id="search">搜尋</button></div><button class="result" id="chooseLyrics">練習曲<small>KTV · 同步歌詞 · 4:00</small></button></div></div>
+      <div class="row"><div class="row-head"><span>歌詞時間差</span><small>每次調整 0.5 秒</small></div><div class="offset-controls"><button id="earlier">−0.5s</button><output id="offset">+0.00 s</output><button id="later">+0.5s</button><button id="reset">重置</button><label><input id="autoAlign" type="checkbox" role="switch" checked>自動校正</label></div></div>
+    </section>
+    <section class="tab-content" id="pitchSettings" role="tabpanel" aria-labelledby="tabPitch" hidden>
+      <div class="row"><label class="toggle-row" for="mic"><span>音準練習<br><small class="hint">預覽目標與你的示意音高曲線</small></span><input class="switch" id="mic" type="checkbox" role="switch" checked></label></div>
+      <div class="row"><label class="toggle-row" for="octave">低八度演唱<input class="switch" id="octave" type="checkbox" role="switch"></label></div>
+      <div class="row"><div class="row-head">容錯程度</div><div class="choices" role="group" aria-label="容錯程度"><button aria-pressed="false">寬鬆</button><button class="selected" aria-pressed="true">一般</button><button aria-pressed="false">精準</button></div></div>
+      <div class="row"><details><summary>進階設定</summary><div class="row"><div class="row-head">收音靈敏度</div><div class="choices" role="group" aria-label="收音靈敏度"><button class="selected" aria-pressed="true">一般</button><button aria-pressed="false">輕聲</button><button aria-pressed="false">抗雜音</button></div></div><div class="row"><div class="row-head"><label for="delay">收音延遲</label><small id="delayValue">0 ms</small></div><input id="delay" type="range" min="-300" max="600" step="10" value="0"></div></details></div>
+    </section>
+  </dialog>
+  <div class="toast" id="toast" role="status" hidden></div>
+  <script>
+    const $ = id => document.getElementById(id);
+    const dialog = $('adjustments');
+    const tabs = [...document.querySelectorAll('[role="tab"]')];
+    let activeLine = 1, key = 0, offset = 0, toastTimer;
+    function toast(message) {
+      $('toast').textContent = message;
+      $('toast').hidden = false;
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => { $('toast').hidden = true; }, 1400);
+    }
+    function showTab(tab) {
+      tabs.forEach(item => {
+        const selected = item === tab;
+        item.setAttribute('aria-selected', String(selected));
+        item.tabIndex = selected ? 0 : -1;
+        $(item.getAttribute('aria-controls')).hidden = !selected;
+      });
+    }
+    tabs.forEach((tab, index) => {
+      tab.addEventListener('click', () => showTab(tab));
+      tab.addEventListener('keydown', event => {
+        if (!['ArrowLeft','ArrowRight','Home','End'].includes(event.key)) return;
+        event.preventDefault();
+        const next = event.key === 'Home' ? 0 : event.key === 'End' ? tabs.length - 1 : (index + (event.key === 'ArrowRight' ? 1 : -1) + tabs.length) % tabs.length;
+        showTab(tabs[next]); tabs[next].focus();
+      });
+    });
+    $('settings').onclick = () => dialog.showModal();
+    $('close').onclick = () => dialog.close();
+    dialog.addEventListener('close', () => $('settings').focus());
+    dialog.addEventListener('click', event => {
+      const bounds = dialog.getBoundingClientRect();
+      if (event.target === dialog && (event.clientY < bounds.top || event.clientX < bounds.left || event.clientX > bounds.right)) dialog.close();
+    });
+    $('mvToggle').onclick = () => {
+      $('mv').hidden = !$('mv').hidden;
+      $('mvToggle').setAttribute('aria-pressed', String(!$('mv').hidden));
+      $('mvToggle').setAttribute('aria-label', $('mv').hidden ? '展開 MV' : '收起 MV');
+    };
+    $('videoFullscreen').onclick = () => {
+      const action = document.fullscreenElement ? document.exitFullscreen() : $('mv').requestFullscreen();
+      action.catch(() => toast('目前環境無法開啟全螢幕'));
+    };
+    document.addEventListener('fullscreenchange', () => {
+      const full = document.fullscreenElement === $('mv');
+      $('videoFullscreen').setAttribute('aria-pressed',String(full));
+      $('videoFullscreen').setAttribute('aria-label',full ? '退出全螢幕' : 'MV 全螢幕');
+    });
+    $('back').onclick = () => toast('此處返回歌曲庫');
+    function updateMic() {
+      $('pitch').hidden = !$('mic').checked;
+    }
+    $('mic').onchange = updateMic;
+    $('stopMic').onclick = () => { $('mic').checked = false; updateMic(); };
+    const lineTimes = [60,84,108,132,156];
+    const lines = [...document.querySelectorAll('[data-line]')];
+    function highlight(index) {
+      activeLine = Math.max(0,Math.min(lines.length - 1,index));
+      lines.forEach((line,i) => {
+        line.classList.toggle('active',i === activeLine);
+        line.classList.toggle('near',Math.abs(i - activeLine) === 1);
+        if (i === activeLine) line.setAttribute('aria-current','true');
+        else line.removeAttribute('aria-current');
+      });
+    }
+    function updateTime() {
+      const value = Number($('progress').value);
+      $('time').textContent = `${Math.floor(value / 60)}:${String(value % 60).padStart(2,'0')}`;
+      highlight(Math.max(0,lineTimes.findLastIndex(time => time <= value)));
+    }
+    function selectLine(index) {
+      const next = Math.max(0,Math.min(lines.length - 1,index));
+      $('progress').value = lineTimes[next];
+      updateTime();
+    }
+    lines.forEach((line,i) => { line.onclick = () => selectLine(i); });
+    $('previous').onclick = () => selectLine(activeLine - 1);
+    $('next').onclick = () => selectLine(activeLine + 1);
+    $('progress').oninput = updateTime;
+    $('play').onclick = () => {
+      const playing = $('play').getAttribute('aria-pressed') !== 'true';
+      $('play').setAttribute('aria-pressed',String(playing));
+      $('play').setAttribute('aria-label',playing ? '暫停' : '播放');
+      $('play').querySelector('path').setAttribute('d',playing ? 'M6 5h4v14H6zm8 0h4v14h-4z' : 'm8 5 11 7-11 7z');
+    };
+    setInterval(() => {
+      if ($('play').getAttribute('aria-pressed') !== 'true') return;
+      $('progress').value = (Number($('progress').value) + 1) % 241;
+      updateTime();
+    },1000);
+    for (const [id,suffix] of [['guide','%'],['volume','%'],['delay',' ms']]) {
+      $(id).oninput = () => { $(id + 'Value').textContent = $(id).value + suffix; };
+    }
+    function changeKey(delta) {
+      key = Math.max(-6,Math.min(6,key + delta));
+      $('key').textContent = key === 0 ? '原調' : `${key > 0 ? '+' : ''}${key} 半音`;
+    }
+    $('keyDown').onclick = () => changeKey(-1);
+    $('keyUp').onclick = () => changeKey(1);
+    function changeOffset(value) {
+      offset = Math.round(value * 100) / 100;
+      $('offset').textContent = `${offset >= 0 ? '+' : ''}${offset.toFixed(2)} s`;
+    }
+    $('earlier').onclick = () => changeOffset(offset - 0.5);
+    $('later').onclick = () => changeOffset(offset + 0.5);
+    $('reset').onclick = () => changeOffset(0);
+    document.querySelectorAll('.choices button').forEach(button => {
+      button.onclick = () => button.parentElement.querySelectorAll('button').forEach(item => {
+        item.classList.toggle('selected',item === button);
+        item.setAttribute('aria-pressed',String(item === button));
+      });
+    });
+    $('changeLyrics').onclick = () => {
+      $('lyricSearch').hidden = !$('lyricSearch').hidden;
+      $('changeLyrics').setAttribute('aria-expanded',String(!$('lyricSearch').hidden));
+      if (!$('lyricSearch').hidden) $('lyricSearch').querySelector('input').focus();
+    };
+    $('chooseLyrics').onclick = () => {
+      $('lyricSearch').hidden = true;
+      $('changeLyrics').setAttribute('aria-expanded','false');
+      $('changeLyrics').focus();
+    };
+    $('search').onclick = () => $('chooseLyrics').focus();
+  </script>
+</body>
+</html>

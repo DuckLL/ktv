@@ -1,5 +1,6 @@
 import asyncio
 import json
+import logging
 
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse
@@ -12,6 +13,7 @@ from ktv.core.db import upsert_pending_video, upsert_video, get_all_videos, mark
 from ktv.core.cache import touch
 
 router = APIRouter()
+log = logging.getLogger("uvicorn.error")
 
 _jobs: dict[str, dict] = {}
 # Demucs takes several GB of RAM and every core; separate one song at a time.
@@ -103,6 +105,7 @@ async def _run_background_process(url: str, video_id: str):
             **meta,
         }
     except Exception as exc:
+        log.exception("Song processing failed for %s", video_id)
         _jobs[video_id] = {
             "status": "error",
             "pct": 0,

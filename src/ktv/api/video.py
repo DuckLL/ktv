@@ -8,6 +8,7 @@ from ktv.core.cache import touch
 from ktv.core.audio import AUDIO_MEDIA_TYPES, original_audio_path
 from ktv.core.transpose import transposed_audio
 from ktv.core.pitch import prepare_practice_reference
+from ktv.core.playback_video import playback_video
 
 router = APIRouter()
 
@@ -18,7 +19,11 @@ async def serve_video(video_id: str):
     if not path.exists():
         return JSONResponse({"error": "Video not found"}, status_code=404)
     await touch(video_id)
-    return FileResponse(path, media_type="video/webm")
+    try:
+        prepared = await playback_video(path)
+        return FileResponse(prepared, media_type="video/mp4" if prepared.suffix == ".mp4" else "video/webm")
+    except (OSError, RuntimeError, TimeoutError, ValueError, KeyError):
+        return JSONResponse({"error": "Could not prepare video controls; please try again"}, status_code=503)
 
 
 @router.get("/audio/{video_id}/instrumental")

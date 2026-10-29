@@ -1,4 +1,4 @@
-// Audio is the master clock. Correct only the muted video so buffering and
+// Audio is the master clock. Correct only the silent video so buffering and
 // dropped frames cannot interrupt either of the overlapping audio tracks.
 export class VideoAudioSync {
   constructor(video, audio) {

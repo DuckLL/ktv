@@ -888,24 +888,6 @@ details:not([open]) > .sidebar-content { display: none; }
   margin-left: auto;
 }
 
-.offset-auto-toggle {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.25rem;
-  flex-shrink: 0;
-  color: #a8a8be;
-  font-size: 0.75rem;
-  white-space: nowrap;
-  cursor: pointer;
-}
-
-.offset-auto-toggle input {
-  width: 0.875rem;
-  height: 0.875rem;
-  accent-color: var(--accent);
-  cursor: pointer;
-}
-
 .offset-saved {
   font-size: 0.7rem;
   color: var(--neon);
@@ -1072,8 +1054,6 @@ details:not([open]) > .sidebar-content { display: none; }
   .offset-btn.reset {
     margin-left: 0;
   }
-
-  .offset-auto-toggle { min-height: 44px; }
 
   .offset-saved {
     min-width: 0;

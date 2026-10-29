@@ -8,7 +8,7 @@ from ktv.main import app
 class StaticCacheTests(unittest.TestCase):
     def test_pages_and_modules_are_revalidated_after_a_deploy(self):
         client = TestClient(app)  # without `with`, the lifespan (database, eviction) does not run
-        for path in ("/", "/player", "/static/js/player.js", "/static/css/style.css"):
+        for path in ("/", "/player", "/static/js/player.js", "/static/js/player_layout.js", "/static/css/style.css", "/static/css/player_layout.css"):
             with self.subTest(path=path):
                 response = client.get(path)
                 self.assertEqual(response.status_code, 200)

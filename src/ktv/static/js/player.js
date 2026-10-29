@@ -2,8 +2,7 @@ import { parseLrc, findActiveIndex, getNavigationTime, rankLyricResults } from '
 import { SynchronizedAudioPlayer } from '/static/js/audio_player.js';
 import { VideoAudioSync } from '/static/js/video_sync.js';
 import { PitchFeedback } from '/static/js/pitch_feedback.js';
-import { suggestLyricOffset } from '/static/js/lyric_alignment.js';
-import { loadPracticeSettings, savePracticeSettings } from '/static/js/practice_settings.js';
+import { createPlayerLayout } from '/static/js/player_layout.js';
 import {
   calculateMixVolumes,
   formatVolumePercent,
@@ -26,36 +25,33 @@ if (videoId) {
 }
 
 const video = document.getElementById('mainVideo');
-video.muted = true; // The video has no audio track; audio is handled separately.
+// The served video carries silence; real audio comes from the synchronized mix.
 if (videoId) video.src = `/api/video/${videoId}`;
 
 // ── Lyrics state ──────────────────────────────────────
 let lrcLines = [];
-let activeIdx = -1;
+let activeIdx = null;
 let selectedLrcId = null;
 let offsetSeconds = 0;
 let selectionRevision = 0;
 let selectionSave = Promise.resolve();
+let clearingLyricsMemory = false;
 
 const lyricsStage = document.getElementById('lyricsStage');
 const previousLine = document.getElementById('previousLine');
 const nextLine = document.getElementById('nextLine');
 const searchPanel = document.getElementById('lyricsSearchPanel');
-const playbackSettings = document.getElementById('playbackSettings');
-const offsetSettings = document.getElementById('offsetSettings');
-const mobileLayout = window.matchMedia('(max-width: 760px)');
-
-function setPanelDefaults() {
-  [searchPanel, playbackSettings, offsetSettings].forEach(panel => { panel.open = !mobileLayout.matches; });
+const mobileLayout = window.matchMedia('(max-width: 760px), (max-width: 960px) and (max-height: 500px)');
+let playerLayout;
+let lyricFollowAfter = 0;
+for (const event of ['wheel', 'touchmove']) {
+  lyricsStage.addEventListener(event, () => { lyricFollowAfter = performance.now() + 5000; }, { passive: true });
 }
-setPanelDefaults();
-// Desktop hides the panel headers, so reopen panels there; rotating a phone keeps the user's choice.
-mobileLayout.addEventListener('change', () => { if (!mobileLayout.matches) setPanelDefaults(); });
 
 function updateNavigation() {
   const hasLyrics = lrcLines.length > 0;
-  previousLine.textContent = hasLyrics ? '← 上一句' : '← 退 5 秒';
-  nextLine.textContent = hasLyrics ? '下一句 →' : '進 5 秒 →';
+  document.getElementById('previousLineLabel').textContent = hasLyrics ? '上一句' : '退 5 秒';
+  document.getElementById('nextLineLabel').textContent = hasLyrics ? '下一句' : '進 5 秒';
   previousLine.setAttribute('aria-label', hasLyrics ? '上一句歌詞' : '快退 5 秒');
   nextLine.setAttribute('aria-label', hasLyrics ? '下一句歌詞' : '快進 5 秒');
   document.getElementById('navigationLabel').textContent = hasLyrics ? '歌詞跳轉' : '播放跳轉';
@@ -70,6 +66,7 @@ previousLine.addEventListener('click', () => navigatePlayback(-1));
 nextLine.addEventListener('click', () => navigatePlayback(1));
 
 function renderLyrics() {
+  activeIdx = null;
   updateNavigation();
   lyricsStage.innerHTML = '';
   if (!lrcLines.length) {
@@ -80,15 +77,15 @@ function renderLyrics() {
     button.className = 'lyrics-search-shortcut';
     button.textContent = '搜尋歌詞';
     button.addEventListener('click', () => {
-      searchPanel.open = true;
-      document.getElementById('lyricsSearchInput').focus();
+      playerLayout.openSettings('lyrics', true);
     });
     placeholder.appendChild(button);
     lyricsStage.appendChild(placeholder);
     return;
   }
   lrcLines.forEach((line, i) => {
-    const el = document.createElement('div');
+    const el = document.createElement('button');
+    el.type = 'button';
     el.className = 'lyric-line';
     el.dataset.idx = i;
     el.textContent = line.text || '♪';
@@ -98,6 +95,7 @@ function renderLyrics() {
 }
 
 function centerLyricInStage(activeEl) {
+  if (performance.now() < lyricFollowAfter) return;
   const stageRect = lyricsStage.getBoundingClientRect();
   const lineRect = activeEl.getBoundingClientRect();
   const lineCenter = lineRect.top - stageRect.top + lyricsStage.scrollTop + lineRect.height / 2;
@@ -112,9 +110,13 @@ function syncLyrics(currentTime) {
   activeIdx = newIdx;
 
   lyricsStage.querySelectorAll('.lyric-line').forEach((el, i) => {
-    el.classList.remove('active', 'next');
+    el.classList.remove('active', 'previous', 'next', 'preview');
     if (i === activeIdx) el.classList.add('active');
+    else if (i === activeIdx - 1) el.classList.add('previous');
     else if (i === activeIdx + 1) el.classList.add('next');
+    if (activeIdx < 0 && i < 3) el.classList.add('preview');
+    if (i === activeIdx) el.setAttribute('aria-current', 'true');
+    else el.removeAttribute('aria-current');
   });
 
   if (activeIdx >= 0) {
@@ -128,12 +130,7 @@ video.addEventListener('timeupdate', () => syncLyrics(videoSync.currentTime));
 // ── Offset controls ───────────────────────────────────
 const offsetValueEl = document.getElementById('offsetValue');
 const offsetSavedEl = document.getElementById('offsetSaved');
-const autoLyricAlignment = document.getElementById('autoLyricAlignment');
-autoLyricAlignment.checked = loadPracticeSettings().autoLyricAlignment !== false;
-autoLyricAlignment.addEventListener('change', () => {
-  savePracticeSettings({ autoLyricAlignment: autoLyricAlignment.checked });
-  if (autoLyricAlignment.checked) alignLyrics();
-});
+const offsetButtons = [...document.querySelectorAll('#offsetBar button')];
 const offsetTimers = new Map();
 const pendingOffsets = new Map();
 let offsetSave = Promise.resolve();
@@ -142,13 +139,13 @@ function setOffset(val, save = true) {
   offsetSeconds = Math.round(val * 100) / 100;
   offsetValueEl.textContent = (offsetSeconds >= 0 ? '+' : '') + offsetSeconds.toFixed(2) + ' s';
   document.getElementById('offsetSummary').textContent = offsetValueEl.textContent;
-  activeIdx = -1;
+  activeIdx = null;
   syncLyrics(videoSync.currentTime);
   if (save) scheduleSave();
 }
 
 function scheduleSave() {
-  if (!selectedLrcId) return;
+  if (!selectedLrcId || clearingLyricsMemory) return;
   const id = selectedLrcId;
   const offset = offsetSeconds;
   clearTimeout(offsetTimers.get(id));
@@ -199,8 +196,9 @@ function flashSaved() {
   setTimeout(() => offsetSavedEl.classList.remove('show'), 1500);
 }
 
-document.getElementById('offsetMinus').addEventListener('click', () => setOffset(offsetSeconds - 0.5));
-document.getElementById('offsetPlus').addEventListener('click',  () => setOffset(offsetSeconds + 0.5));
+for (const button of offsetButtons.filter(button => button.hasAttribute('data-offset-step'))) {
+  button.addEventListener('click', () => setOffset(offsetSeconds + Number(button.dataset.offsetStep)));
+}
 document.getElementById('offsetReset').addEventListener('click', () => setOffset(0));
 
 // ── Audio setup ───────────────────────────────────────
@@ -210,7 +208,7 @@ const audioPlayer = new SynchronizedAudioPlayer([
 ]);
 const videoSync = new VideoAudioSync(video, audioPlayer);
 const pitchFeedback = new PitchFeedback(audioPlayer, videoId);
-const referenceReady = pitchFeedback.loadReference();
+pitchFeedback.loadReference();
 const audioStatus = document.getElementById('audioStatus');
 function showAudioError() {
   audioStatus.textContent = '音訊載入失敗，請在首頁重新處理這首歌';
@@ -238,6 +236,8 @@ function followLyrics() {
 }
 requestAnimationFrame(followLyrics);
 let masterVolume = 0.8;
+video.volume = masterVolume;
+const nativeVolumeWritable = Math.abs(video.volume - masterVolume) < 0.001;
 let mixAmount = 0;
 const volumeSlider = document.getElementById('volumeSlider');
 const volumeValue = document.getElementById('volumeValue');
@@ -272,20 +272,30 @@ keySelect.addEventListener('change', async () => {
 
 function setVolume(v) {
   masterVolume = Math.round(Math.max(0, Math.min(1, v)) * 100) / 100;
+  if (nativeVolumeWritable) video.volume = masterVolume;
+  video.muted = false;
   applyMixVolumes();
   updateVolumeDisplay();
 }
 
+video.addEventListener('volumechange', () => {
+  // iOS may expose a read-only element volume; its system volume still applies.
+  if (nativeVolumeWritable) masterVolume = Math.round(video.volume * 100) / 100;
+  applyMixVolumes();
+  updateVolumeDisplay();
+});
+
 function updateVolumeDisplay() {
   volumeSlider.value = volumeToSliderValue(masterVolume);
-  volumeValue.textContent = formatVolumePercent(masterVolume);
+  volumeValue.textContent = video.muted ? '靜音' : formatVolumePercent(masterVolume);
 }
 
 function applyMixVolumes() {
-  const volumes = calculateMixVolumes(masterVolume, mixAmount);
+  const volumes = calculateMixVolumes(video.muted ? 0 : masterVolume, mixAmount);
   audioPlayer.setVolumes([volumes.instrumental, volumes.original]);
   const mixLabel = mixAmount === 0 ? '伴唱' : mixAmount === 1 ? '原唱' : `導唱 ${Math.round(mixAmount * 100)}%`;
-  document.getElementById('audioSettingsSummary').textContent = `音量 ${Math.round(masterVolume * 100)}% · ${mixLabel} · ${keyLabel(audioPlayer.keySemitones)}`;
+  const volumeLabel = video.muted ? '靜音' : `音量 ${Math.round(masterVolume * 100)}%`;
+  document.getElementById('audioSettingsSummary').textContent = `${volumeLabel} · ${mixLabel} · ${keyLabel(audioPlayer.keySemitones)}`;
 }
 
 video.addEventListener('play', () => {
@@ -299,7 +309,7 @@ video.addEventListener('play', () => {
   }).catch(showAudioError);
 });
 video.addEventListener('pause', () => {
-  if (!document.hidden && !video.ended) {
+  if (!document.hidden && !video.ended && !video.parentElement.hidden) {
     audioPlayer.pause();
     videoSync.reset();
   }
@@ -318,7 +328,7 @@ video.addEventListener('timeupdate', () => {
   if (!document.hidden) videoSync.followAudio();
 });
 
-// The shared audio clock keeps running if a background tab pauses muted video.
+// The shared audio clock keeps running if a background tab pauses the video.
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) return;
   if (audioPlayer.playing && video.paused) {
@@ -358,7 +368,7 @@ setMix(0);
 
 // ── Keyboard controls ─────────────────────────────────
 document.addEventListener('keydown', (e) => {
-  if (e.ctrlKey || e.altKey || e.metaKey || e.target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName)) return;
+  if (e.defaultPrevented || document.getElementById('mobileSettings').open || e.ctrlKey || e.altKey || e.metaKey || e.target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName)) return;
   switch (e.key) {
     case 'ArrowLeft':
       e.preventDefault();
@@ -432,6 +442,7 @@ function renderResults(items) {
 }
 
 async function selectLyrics(item, clickedEl) {
+  if (clearingLyricsMemory) await selectionSave.catch(() => {});
   const revision = ++selectionRevision;
   const id = String(item.id);
   const loadingOffset = fetchOffset(id);
@@ -452,10 +463,11 @@ async function selectLyrics(item, clickedEl) {
 
   selectedLrcId = id;
   lrcLines = syncedLyrics ? parseLrc(syncedLyrics) : [];
-  activeIdx = -1;
+  activeIdx = null;
   renderLyrics();
   setOffset(offset, false);
   document.getElementById('lyricsSelectionSummary').textContent = item.trackName || '已選擇';
+  document.getElementById('lyricsClearMemory').disabled = clearingLyricsMemory;
   if (mobileLayout.matches && lrcLines.length) searchPanel.open = false;
 
   // Persist selection to DB
@@ -481,6 +493,49 @@ async function saveSelection(item, syncedLyrics) {
   } catch (_) { return false; }
 }
 
+async function clearLyricsMemory() {
+  if (!videoId || clearingLyricsMemory) return;
+  const revision = ++selectionRevision;
+  lyricSearchRevision++;
+  clearingLyricsMemory = true;
+  const button = document.getElementById('lyricsClearMemory');
+  button.disabled = true;
+  for (const timer of offsetTimers.values()) clearTimeout(timer);
+  offsetTimers.clear();
+  pendingOffsets.clear();
+  for (const button of offsetButtons) button.disabled = true;
+  const saving = selectionSave.catch(() => {}).then(async () => {
+    // Finish earlier writes before deleting, so a delayed save cannot restore the wrong version.
+    await offsetSave.catch(() => {});
+    const response = await fetch(`/api/selection/${videoId}`, { method: 'DELETE' });
+    if (!response.ok) throw new Error('清除失敗，請再試一次。');
+  });
+  selectionSave = saving;
+  try {
+    await saving;
+    if (revision !== selectionRevision) return;
+    selectedLrcId = null;
+    lrcLines = [];
+    renderLyrics();
+    setOffset(0, false);
+    document.getElementById('lyricsSelectionSummary').textContent = '尚未選擇';
+    resultsList.querySelectorAll('.selected').forEach(el => el.classList.remove('selected'));
+    autoStatus.textContent = '歌詞記憶已清除，請重新搜尋並選擇版本。';
+    if (!searchInput.value.trim()) searchInput.value = `${artist} ${title}`.trim();
+    playerLayout.openSettings('lyrics', true);
+  } catch (error) {
+    if (revision === selectionRevision) {
+      autoStatus.textContent = error.message;
+      searchPanel.open = true;
+    }
+  } finally {
+    clearingLyricsMemory = false;
+    button.disabled = !selectedLrcId;
+    for (const button of offsetButtons) button.disabled = false;
+  }
+}
+document.getElementById('lyricsClearMemory').addEventListener('click', clearLyricsMemory);
+
 // ── Auto-restore last selection ───────────────────────
 async function restoreSelection() {
   const revision = selectionRevision;
@@ -490,6 +545,12 @@ async function restoreSelection() {
     if (resp.status === 204) return false;
     const saved = await resp.json();
     if (revision !== selectionRevision) return null;
+    if (saved?.cleared) {
+      searchInput.value = `${artist} ${title}`.trim();
+      searchPanel.open = true;
+      autoStatus.textContent = '歌詞記憶已清除，請搜尋並選擇版本。';
+      return 'cleared';
+    }
     if (!saved?.lrclib_id) return false;
 
     const offset = await fetchOffset(saved.lrclib_id);
@@ -498,6 +559,7 @@ async function restoreSelection() {
     selectedLrcId = saved.lrclib_id;
     lrcLines = saved.synced_lyrics ? parseLrc(saved.synced_lyrics) : [];
     document.getElementById('lyricsSelectionSummary').textContent = saved.track_name || '已選擇';
+    document.getElementById('lyricsClearMemory').disabled = false;
     renderLyrics();
     setOffset(offset, false);
 
@@ -528,7 +590,7 @@ function songDuration() {
 }
 
 async function autoFindLyrics() {
-  if (!title) return;
+  if (!title || clearingLyricsMemory) return;
   const searchRevision = ++lyricSearchRevision;
   const selection = selectionRevision;
   autoStatus.textContent = '正在依歌名、歌手與長度自動找歌詞…';
@@ -547,7 +609,6 @@ async function autoFindLyrics() {
       autoStatus.textContent = saved
         ? `已自動選用：${data.selected.artistName} — ${data.selected.trackName}`
         : '歌詞已選用，但儲存失敗，請重新選用或稍後重試。';
-      await alignLyrics();
     } else {
       autoStatus.textContent = data.results?.length ? '找到候選歌詞，請確認歌曲版本。' : '尚未找到，請調整關鍵字搜尋。';
       if (!lrcLines.length) searchPanel.open = true;
@@ -557,23 +618,13 @@ async function autoFindLyrics() {
   }
 }
 
-async function alignLyrics() {
-  if (!autoLyricAlignment.checked || !lrcLines.length) return;
-  const selection = selectionRevision;
-  const offset = offsetSeconds;
-  const reference = await referenceReady;
-  if (!autoLyricAlignment.checked || selection !== selectionRevision || offset !== offsetSeconds) return;
-  const suggestion = suggestLyricOffset(lrcLines, reference, offset);
-  if (suggestion) setOffset(suggestion.offset);
-}
-
 document.getElementById('lyricsAutoRetry').addEventListener('click', () => autoFindLyrics());
 
 // ── Init ──────────────────────────────────────────────
 async function init() {
   renderLyrics();
   const restored = await restoreSelection();
-  if (restored === null) return;
+  if (restored === null || restored === 'cleared') return;
 
   if (!restored) {
     // Wait for metadata without delaying the player's audio or microphone setup.
@@ -582,10 +633,11 @@ async function init() {
     }
     if (!selectedLrcId && selectionRevision === 0) await autoFindLyrics();
   } else {
-    autoStatus.textContent = '已還原上次選用的歌詞與校正時間。';
+    autoStatus.textContent = '已還原上次選用的歌詞與時間差。';
   }
 }
 
+playerLayout = createPlayerLayout({ video, audio: audioPlayer, pitchFeedback, media: mobileLayout, onError: showAudioError });
 init();
 
 function formatDuration(seconds) {
